@@ -163,7 +163,14 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
     func startTCPServer() {
         do {
             let port = NWEndpoint.Port(rawValue: defaultTCPPort)!
-            let listener = try NWListener(using: .tcp, on: port)
+            let tcpOptions = NWProtocolTCP.Options()
+            tcpOptions.enableKeepalive = true
+            tcpOptions.keepaliveIdle = 2
+            let params = NWParameters(tls: nil, tcp: tcpOptions)
+            params.allowLocalEndpointReuse = true
+            params.includePeerToPeer = true
+            
+            let listener = try NWListener(using: params, on: port)
             
             listener.newConnectionHandler = { [weak self] newConnection in
                 self?.handleIncomingTCPConnection(newConnection)
@@ -224,7 +231,15 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         
         guard let port = NWEndpoint.Port(rawValue: defaultTCPPort) else { return }
         let host = NWEndpoint.Host(trimmed)
-        let conn = NWConnection(host: host, port: port, using: .tcp)
+        
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.enableKeepalive = true
+        tcpOptions.keepaliveIdle = 2
+        let params = NWParameters(tls: nil, tcp: tcpOptions)
+        params.allowLocalEndpointReuse = true
+        params.includePeerToPeer = true
+        
+        let conn = NWConnection(host: host, port: port, using: params)
         
         connectionState = .connecting(peerName: trimmed)
         
@@ -232,10 +247,10 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
             Task { @MainActor in
                 switch state {
                 case .ready:
-                    print("🟢 Successfully connected to Mac IP: \(trimmed)")
+                    print("🟢 Successfully connected to IP: \(trimmed)")
                     self?.clientTCPConnection = conn
                     self?.isDirectTCPConnected = true
-                    self?.connectionState = .connected(peerName: "Máy Mac (\(trimmed))")
+                    self?.connectionState = .connected(peerName: "\(trimmed)")
                     self?.receiveNextTCPPacket(from: conn)
                 case .failed(let err):
                     print("❌ Direct connect failed: \(err)")
