@@ -3,6 +3,7 @@ import PDFKit
 
 struct BookLibraryView: View {
     @ObservedObject var vm: BookLibraryViewModel
+    var onSelectBookToRead: (URL) -> Void
     var onSelectBookToSplit: (URL) -> Void
     var onOpenSplitterDirectly: () -> Void
     
@@ -409,13 +410,28 @@ struct BookLibraryView: View {
             }
             
             // Action Buttons
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
+                Button {
+                    onSelectBookToRead(book.url)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "book.fill")
+                        Text("Đọc")
+                    }
+                    .font(.system(size: 10, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 3)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.accentColor)
+                .controlSize(.mini)
+                
                 Button {
                     onSelectBookToSplit(book.url)
                 } label: {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 2) {
                         Image(systemName: "scissors")
-                        Text("Tách Sách")
+                        Text("Tách")
                     }
                     .font(.system(size: 10, weight: .semibold))
                     .frame(maxWidth: .infinity)
@@ -443,9 +459,12 @@ struct BookLibraryView: View {
                 .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.12), lineWidth: isSelected ? 2 : 1)
         )
         .onTapGesture(count: 2) {
-            onSelectBookToSplit(book.url)
+            onSelectBookToRead(book.url)
         }
         .contextMenu {
+            Button("📖 Đọc Sách") {
+                onSelectBookToRead(book.url)
+            }
             Button("✂️ Tách Sách Này") {
                 onSelectBookToSplit(book.url)
             }
@@ -523,6 +542,13 @@ struct BookLibraryView: View {
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
                 .frame(width: 60, alignment: .trailing)
+            
+            Button("Đọc") {
+                onSelectBookToRead(book.url)
+            }
+            .controlSize(.small)
+            .buttonStyle(.borderedProminent)
+            .tint(Color.accentColor)
             
             Button("Tách") {
                 onSelectBookToSplit(book.url)
