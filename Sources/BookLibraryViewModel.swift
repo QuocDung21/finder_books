@@ -2,8 +2,50 @@ import SwiftUI
 import PDFKit
 import AppKit
 
+// MARK: - Sidebar Item Navigation
+enum LibrarySidebarItem: Hashable, Identifiable {
+    case allBooks
+    case smartInbox
+    case splitParts
+    case category(BookCategory)
+    case splitterTool
+    
+    var id: String {
+        switch self {
+        case .allBooks: return "all"
+        case .smartInbox: return "smartInbox"
+        case .splitParts: return "splitParts"
+        case .category(let cat): return "cat_\(cat.rawValue)"
+        case .splitterTool: return "tool_splitter"
+        }
+    }
+    
+    var title: String {
+        switch self {
+        case .allBooks: return "Tất Cả Sách"
+        case .smartInbox: return "Hộp Thư Tự Động"
+        case .splitParts: return "Sách Đã Tách Phần"
+        case .category(let cat): return cat.rawValue
+        case .splitterTool: return "Công Cụ Tách Sách"
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .allBooks: return "books.vertical.fill"
+        case .smartInbox: return "tray.and.arrow.down.fill"
+        case .splitParts: return "scissors.badge.ellipsis"
+        case .category(let cat): return cat.icon
+        case .splitterTool: return "scissors"
+        }
+    }
+}
+
 @MainActor
 class BookLibraryViewModel: ObservableObject {
+    // MARK: - Navigation & Sidebar State
+    @Published var selectedSidebarItem: LibrarySidebarItem = .allBooks
+    
     // MARK: - Library State
     @Published var libraryRootURL: URL? = nil
     @Published var books: [BookItem] = []
@@ -54,11 +96,34 @@ class BookLibraryViewModel: ObservableObject {
     // MARK: - Filtered & Sorted Books
     var filteredBooks: [BookItem] {
         var list = books
+        
+        // 1. Filter by Sidebar Item
+        switch selectedSidebarItem {
+        case .allBooks:
+            break
+        case .smartInbox:
+            list = list.filter { $0.folderName.contains("Inbox") || $0.folderName.contains("inbox") }
+        case .splitParts:
+            list = list.filter { $0.baseName.range(of: "_part\\d+", options: .regularExpression) != nil }
+        case .category(let targetCat):
+            list = list.filter { book in
+                let folder = book.folderName
+                if folder == targetCat.rawValue || folder == targetCat.folderName || folder.contains(targetCat.rawValue) {
+                    return true
+                }
+                return bookCategories[book.id] == targetCat
+            }
+        case .splitterTool:
+            break
+        }
+        
+        // 2. Search Text
         if !searchText.trimmingCharacters(in: .whitespaces).isEmpty {
             let q = searchText.lowercased()
             list = list.filter { $0.name.lowercased().contains(q) || $0.folderName.lowercased().contains(q) }
         }
         
+        // 3. Sorting
         switch sortOption {
         case .name:
             list.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
