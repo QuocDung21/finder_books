@@ -217,7 +217,7 @@ struct BookLibraryView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.accentColor)
                     
-                    if !syncManager.connectedPeers.isEmpty {
+                    if syncManager.isConnected {
                         Button {
                             for id in vm.selectedBookIDs {
                                 if let book = vm.books.first(where: { $0.id == id }) {
@@ -225,7 +225,7 @@ struct BookLibraryView: View {
                                 }
                             }
                         } label: {
-                            Label("Gửi Sang \(syncManager.connectedPeers.first?.displayName ?? "iPad")", systemImage: "paperplane.fill")
+                            Label("Gửi Sang \(syncManager.connectedDeviceName)", systemImage: "paperplane.fill")
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
@@ -273,11 +273,11 @@ struct BookLibraryView: View {
                 onSelectBookToRead(book.url)
             }
             
-            if let peer = syncManager.connectedPeers.first {
+            if syncManager.isConnected {
                 Button {
                     syncManager.sendBookFile(url: book.url)
                 } label: {
-                    Label("Gửi Sang \(peer.displayName) (Wi-Fi)", systemImage: "paperplane.fill")
+                    Label("Gửi Sang \(syncManager.connectedDeviceName) (Wi-Fi/Dây)", systemImage: "paperplane.fill")
                 }
             }
             

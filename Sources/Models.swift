@@ -4,9 +4,9 @@ import SwiftUI
 enum SplitMode: String, CaseIterable, Identifiable {
     case byParts = "by_parts"
     case byPages = "by_pages"
-    
+
     var id: String { rawValue }
-    
+
     var title: String {
         switch self {
         case .byParts:
@@ -25,7 +25,7 @@ struct PdfPartItem: Identifiable, Equatable {
     var endPage: Int
     var filename: String
     var color: Color
-    
+
     var pageCount: Int {
         max(0, endPage - startPage + 1)
     }
@@ -45,7 +45,7 @@ struct LogEntry: Identifiable {
     let timestamp: String
     let icon: String
     let message: String
-    
+
     var formattedText: String {
         "[\(timestamp)] \(icon) \(message)"
     }
@@ -63,7 +63,7 @@ struct AppColors {
         Color(red: 0.39, green: 0.40, blue: 0.95), // Indigo
         Color(red: 0.08, green: 0.72, blue: 0.65)  // Teal
     ]
-    
+
     static func partColor(at index: Int) -> Color {
         partColors[index % partColors.count]
     }

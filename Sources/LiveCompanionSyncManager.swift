@@ -46,6 +46,19 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
     @Published var manualConnectIP: String = ""
     @Published var isDirectTCPConnected: Bool = false
     
+    var isConnected: Bool {
+        isDirectTCPConnected || !connectedPeers.isEmpty
+    }
+    
+    var connectedDeviceName: String {
+        if let peer = connectedPeers.first {
+            return peer.displayName
+        } else if isDirectTCPConnected {
+            return "iPad/Mac"
+        }
+        return "Thiết Bị"
+    }
+    
     // Inked strokes storage (Page Index -> [LiveInkStroke])
     @Published var pageStrokes: [Int: [LiveInkStroke]] = [:]
     
