@@ -60,6 +60,13 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_fb-sync._tcp</string>
+        <string>_fb-sync._udp</string>
+    </array>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Ứng dụng cần sử dụng mạng cục bộ để đồng bộ sách và nét vẽ Apple Pencil với iPad.</string>
 </dict>
 </plist>
 EOF

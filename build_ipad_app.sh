@@ -2,7 +2,7 @@
 set -e
 
 BUNDLE_ID="com.quocdung.finderbooks"
-EXEC_NAME="PdfSplitter"
+EXEC_NAME="FinderBooks"
 APP_NAME="Finder Books"
 BUILD_DIR=".build"
 OUTPUT_DIR="build"
@@ -84,7 +84,7 @@ mkdir -p "$OUTPUT_DIR"
 if [ "$TARGET_MODE" == "physical" ] || [ "$TARGET_MODE" == "ipa" ]; then
     echo "🔨 Đang biên dịch mã nguồn cho thiết bị iPad thật (SDK: iphoneos - arm64)..."
     
-    xcodebuild -scheme PdfSplitter \
+    xcodebuild -scheme FinderBooks \
       -destination "generic/platform=iOS" \
       -configuration Release \
       -derivedDataPath "$BUILD_DIR/DerivedData-Device" \
@@ -144,8 +144,8 @@ if [ "$TARGET_MODE" == "physical" ] || [ "$TARGET_MODE" == "ipa" ]; then
     </array>
     <key>NSBonjourServices</key>
     <array>
-        <string>_finderbooks-pen._tcp</string>
-        <string>_finderbooks-pen._udp</string>
+        <string>_fb-sync._tcp</string>
+        <string>_fb-sync._udp</string>
     </array>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Ứng dụng cần sử dụng mạng cục bộ để đồng bộ sách và nét vẽ Apple Pencil với máy Mac.</string>
@@ -193,79 +193,28 @@ EOF
 else
     echo "🔨 Đang biên dịch mã nguồn cho iOS Simulator ($TARGET_NAME)..."
     
-    xcodebuild -scheme PdfSplitter \
+    xcodebuild -project FinderBooks.xcodeproj \
+      -scheme FinderBooks \
       -destination "id=$TARGET_ID" \
       -configuration Debug \
       -derivedDataPath "$BUILD_DIR/DerivedData" \
       build
 
-    BINARY_PATH=$(find "$BUILD_DIR/DerivedData/Build/Products/Debug-iphonesimulator" -name "$EXEC_NAME" -type f -perm +111 | head -n 1)
+    APP_BUNDLE_PATH=$(find "$BUILD_DIR/DerivedData/Build/Products/Debug-iphonesimulator" -name "FinderBooks.app" -type d | head -n 1)
 
-    IPAD_APP_DIR="$BUILD_DIR/FinderBooks.app"
-    rm -rf "$IPAD_APP_DIR"
-    mkdir -p "$IPAD_APP_DIR"
-
-    cp "$BINARY_PATH" "$IPAD_APP_DIR/$EXEC_NAME"
-    chmod +x "$IPAD_APP_DIR/$EXEC_NAME"
-
-    cat << EOF > "$IPAD_APP_DIR/Info.plist"
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleExecutable</key>
-    <string>$EXEC_NAME</string>
-    <key>CFBundleIdentifier</key>
-    <string>$BUNDLE_ID</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>Finder Books</string>
-    <key>CFBundleDisplayName</key>
-    <string>Finder Books</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>LSRequiresIPhoneOS</key>
-    <true/>
-    <key>UIDeviceFamily</key>
-    <array>
-        <integer>1</integer>
-        <integer>2</integer>
-    </array>
-    <key>UISupportedInterfaceOrientations~ipad</key>
-    <array>
-        <string>UIInterfaceOrientationPortrait</string>
-        <string>UIInterfaceOrientationPortraitUpsideDown</string>
-        <string>UIInterfaceOrientationLandscapeLeft</string>
-        <string>UIInterfaceOrientationLandscapeRight</string>
-    </array>
-    <key>NSBonjourServices</key>
-    <array>
-        <string>_finderbooks-pen._tcp</string>
-        <string>_finderbooks-pen._udp</string>
-    </array>
-    <key>NSLocalNetworkUsageDescription</key>
-    <string>Ứng dụng cần sử dụng mạng cục bộ để đồng bộ sách và nét vẽ Apple Pencil với máy Mac.</string>
-</dict>
-</plist>
-EOF
-
-    echo "🔏 Đang ký số ứng dụng iPad Simulator..."
-    codesign --force --sign - --timestamp=none "$IPAD_APP_DIR"
+    if [ -z "$APP_BUNDLE_PATH" ]; then
+        echo "❌ Không tìm thấy FinderBooks.app sau khi build!"
+        exit 1
+    fi
 
     echo "📲 Đang khởi động $TARGET_NAME..."
     xcrun simctl boot "$TARGET_ID" 2>/dev/null || true
+    xcrun simctl bootstatus "$TARGET_ID" -b 2>/dev/null || true
     open -a Simulator
 
     echo "🚀 Đang cài đặt và mở ứng dụng trên $TARGET_NAME..."
     xcrun simctl uninstall "$TARGET_ID" "$BUNDLE_ID" 2>/dev/null || true
-    xcrun simctl install "$TARGET_ID" "$IPAD_APP_DIR"
+    xcrun simctl install "$TARGET_ID" "$APP_BUNDLE_PATH"
     xcrun simctl launch "$TARGET_ID" "$BUNDLE_ID"
 
     echo "========================================================="

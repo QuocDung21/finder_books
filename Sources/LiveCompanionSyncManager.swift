@@ -13,7 +13,7 @@ enum PeerSyncState: Equatable {
         switch self {
         case .disconnected: return "Chưa kết nối"
         case .searching: return "Đang tìm kiếm iPad/Mac..."
-        case .connecting(let name): return "Đang ghép nối: \(name)"
+        case .connecting(let name): return "Đang kết nối: \(name)"
         case .connected(let name): return "Đã kết nối: \(name)"
         }
     }
@@ -23,15 +23,18 @@ enum PeerSyncState: Equatable {
 class LiveCompanionSyncManager: NSObject, ObservableObject {
     static let shared = LiveCompanionSyncManager()
     
-    private let serviceType = "finderbooks-pen"
-    private var myPeerID: MCPeerID
+    // Short 7-char service type for maximum compatibility across macOS & iOS Bonjour
+    private let serviceType = "fb-sync"
+    let myPeerID: MCPeerID
     let session: MCSession
     private var advertiser: MCNearbyServiceAdvertiser
     private var browser: MCNearbyServiceBrowser
+    private var reconnectTimer: Timer?
     
     @Published var connectionState: PeerSyncState = .disconnected
     @Published var isSessionActive: Bool = false
     @Published var connectedPeers: [MCPeerID] = []
+    @Published var discoveredPeers: [MCPeerID] = []
     
     // Inked strokes storage (Page Index -> [LiveInkStroke])
     @Published var pageStrokes: [Int: [LiveInkStroke]] = [:]
@@ -49,13 +52,14 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
     
     override init() {
         #if os(macOS)
-        let deviceName = Host.current().localizedName ?? "Mac"
+        let rawName = Host.current().localizedName ?? "Mac"
         #elseif os(iOS)
-        let deviceName = UIDevice.current.name
+        let rawName = UIDevice.current.name
         #endif
         
+        let deviceName = rawName.isEmpty ? "Apple Device" : rawName
         let peerID = MCPeerID(displayName: deviceName)
-        let mSession = MCSession(peer: peerID, securityIdentity: nil, encryptionPreference: .required)
+        let mSession = MCSession(peer: peerID, securityIdentity: nil, encryptionPreference: .none)
         let mAdvertiser = MCNearbyServiceAdvertiser(peer: peerID, discoveryInfo: nil, serviceType: serviceType)
         let mBrowser = MCNearbyServiceBrowser(peer: peerID, serviceType: serviceType)
         
@@ -69,6 +73,11 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         self.session.delegate = self
         self.advertiser.delegate = self
         self.browser.delegate = self
+        
+        // Auto-start on initialize
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.startSyncSession()
+        }
     }
     
     // MARK: - Start / Stop Service
@@ -77,18 +86,54 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         guard !isSessionActive else { return }
         isSessionActive = true
         connectionState = .searching
+        discoveredPeers.removeAll()
+        
+        advertiser.startAdvertisingPeer()
+        browser.startBrowsingForPeers()
+        
+        // Start background heartbeat reconnect timer
+        reconnectTimer?.invalidate()
+        reconnectTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self, self.isSessionActive else { return }
+                if self.connectedPeers.isEmpty {
+                    // Refresh browsing to discover freshly opened peers
+                    self.browser.stopBrowsingForPeers()
+                    self.browser.startBrowsingForPeers()
+                }
+            }
+        }
+    }
+    
+    @MainActor
+    func restartDiscovery() {
+        advertiser.stopAdvertisingPeer()
+        browser.stopBrowsingForPeers()
+        session.disconnect()
+        connectedPeers.removeAll()
+        discoveredPeers.removeAll()
+        connectionState = .searching
         
         advertiser.startAdvertisingPeer()
         browser.startBrowsingForPeers()
     }
     
     @MainActor
+    func connectToPeer(_ peer: MCPeerID) {
+        connectionState = .connecting(peerName: peer.displayName)
+        browser.invitePeer(peer, to: session, withContext: nil, timeout: 30)
+    }
+    
+    @MainActor
     func stopSyncSession() {
         isSessionActive = false
+        reconnectTimer?.invalidate()
+        reconnectTimer = nil
         advertiser.stopAdvertisingPeer()
         browser.stopBrowsingForPeers()
         session.disconnect()
         connectedPeers.removeAll()
+        discoveredPeers.removeAll()
         connectionState = .disconnected
     }
     
@@ -271,6 +316,7 @@ extension LiveCompanionSyncManager: MCSessionDelegate {
             switch state {
             case .connected:
                 self.connectionState = .connected(peerName: peerID.displayName)
+                print("🟢 Multipeer Connected to: \(peerID.displayName)")
                 
                 // Sync all current strokes with new peer
                 let allFlatStrokes = self.pageStrokes.values.flatMap { $0 }
@@ -287,8 +333,10 @@ extension LiveCompanionSyncManager: MCSessionDelegate {
                 
             case .connecting:
                 self.connectionState = .connecting(peerName: peerID.displayName)
+                print("🟡 Multipeer Connecting to: \(peerID.displayName)...")
                 
             case .notConnected:
+                print("🔴 Multipeer Disconnected from: \(peerID.displayName)")
                 if session.connectedPeers.isEmpty {
                     self.connectionState = self.isSessionActive ? .searching : .disconnected
                 } else {
@@ -434,15 +482,40 @@ extension LiveCompanionSyncManager: MCSessionDelegate {
 // MARK: - MCNearbyServiceAdvertiserDelegate
 extension LiveCompanionSyncManager: MCNearbyServiceAdvertiserDelegate {
     func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didReceiveInvitationFromPeer peerID: MCPeerID, withContext context: Data?, invitationHandler: @escaping (Bool, MCSession?) -> Void) {
+        print("📨 Received invitation from: \(peerID.displayName) ➔ Accepting...")
         invitationHandler(true, self.session)
+    }
+    
+    func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didNotStartAdvertisingPeer error: Error) {
+        print("❌ Advertiser failed: \(error.localizedDescription)")
     }
 }
 
 // MARK: - MCNearbyServiceBrowserDelegate
 extension LiveCompanionSyncManager: MCNearbyServiceBrowserDelegate {
     func browser(_ browser: MCNearbyServiceBrowser, foundPeer peerID: MCPeerID, withDiscoveryInfo info: [String : String]?) {
-        browser.invitePeer(peerID, to: self.session, withContext: nil, timeout: 10)
+        print("🔍 Discovered nearby peer: \(peerID.displayName)")
+        Task { @MainActor in
+            if !self.discoveredPeers.contains(peerID) {
+                self.discoveredPeers.append(peerID)
+            }
+            
+            // Avoid invitation collision: Peer with lower hash sends the invite
+            if self.myPeerID.displayName.hashValue < peerID.displayName.hashValue {
+                print("🚀 Auto-inviting: \(peerID.displayName)...")
+                browser.invitePeer(peerID, to: self.session, withContext: nil, timeout: 30)
+            }
+        }
     }
     
-    func browser(_ browser: MCNearbyServiceBrowser, lostPeer peerID: MCPeerID) {}
+    func browser(_ browser: MCNearbyServiceBrowser, lostPeer peerID: MCPeerID) {
+        print("💨 Lost peer: \(peerID.displayName)")
+        Task { @MainActor in
+            self.discoveredPeers.removeAll(where: { $0 == peerID })
+        }
+    }
+    
+    func browser(_ browser: MCNearbyServiceBrowser, didNotStartBrowsingForPeers error: Error) {
+        print("❌ Browser failed: \(error.localizedDescription)")
+    }
 }
