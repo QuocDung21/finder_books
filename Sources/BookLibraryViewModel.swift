@@ -148,7 +148,6 @@ class BookLibraryViewModel: ObservableObject {
             
         case .byCategory:
             let dict = Dictionary(grouping: items) { book -> BookCategory in
-                // Check if folder is already a known category folder
                 let folder = book.folderName
                 for cat in BookCategory.allCases {
                     if folder == cat.rawValue || folder == cat.folderName || folder.contains(cat.rawValue) {
@@ -160,7 +159,7 @@ class BookLibraryViewModel: ObservableObject {
             return dict.map { (category, groupBooks) in
                 BookGroup(
                     id: category.rawValue,
-                    title: "\(category.rawValue) (\(groupBooks.count) cuốn)",
+                    title: "\(category.rawValue) (\(groupBooks.count))",
                     folderURL: groupBooks.first?.folderURL,
                     books: groupBooks
                 )
@@ -170,7 +169,7 @@ class BookLibraryViewModel: ObservableObject {
             let dict = Dictionary(grouping: items) { $0.folderURL }
             return dict.map { (folderURL, groupBooks) in
                 let title = folderURL.lastPathComponent
-                return BookGroup(id: folderURL.path, title: "📁 \(title) (\(groupBooks.count) sách)", folderURL: folderURL, books: groupBooks)
+                return BookGroup(id: folderURL.path, title: "\(title) (\(groupBooks.count))", folderURL: folderURL, books: groupBooks)
             }.sorted { $0.title < $1.title }
             
         case .bySeries:
@@ -185,7 +184,7 @@ class BookLibraryViewModel: ObservableObject {
                 return "Sách Khác"
             }
             return dict.map { (seriesName, groupBooks) in
-                return BookGroup(id: seriesName, title: "📚 \(seriesName) (\(groupBooks.count) tập)", folderURL: nil, books: groupBooks)
+                return BookGroup(id: seriesName, title: "\(seriesName) (\(groupBooks.count))", folderURL: nil, books: groupBooks)
             }.sorted { $0.title < $1.title }
         }
     }
@@ -254,21 +253,21 @@ class BookLibraryViewModel: ObservableObject {
     // MARK: - Smart Inbox Watcher Setup
     func setupSmartInboxFolder() {
         guard let root = libraryRootURL else { return }
-        let inboxURL = root.appendingPathComponent("📥_Inbox_Gom_Sach", isDirectory: true)
+        let inboxURL = root.appendingPathComponent("Inbox_Gom_Sach", isDirectory: true)
         if !FileManager.default.fileExists(atPath: inboxURL.path) {
             try? FileManager.default.createDirectory(at: inboxURL, withIntermediateDirectories: true)
         }
         folderWatcher.startWatching(folderURL: inboxURL, libraryTargetDir: root)
         showAlert(
-            title: "🤖 Đã Bật Hộp Thư Gom Sách Tự Động",
-            message: "Thư mục Hộp Thư Đến đã được tạo tại:\n👉 \"\(inboxURL.path)\"\n\nBất cứ khi nào bạn ném file PDF vào thư mục này, AI sẽ tự động phân loại và gom vào thư mục thể loại tương ứng!"
+            title: "Đã Bật Thư Mục Nhận Sách Tự Động",
+            message: "Thư mục Hộp Thư Đến đã được thiết lập tại:\n\"\(inboxURL.path)\"\n\nBất cứ khi nào bạn thả file PDF vào thư mục này, hệ thống sẽ tự động phân loại và gom vào thư mục thể loại tương ứng."
         )
     }
     
     func toggleSmartInboxWatcher() {
         if folderWatcher.isWatching {
             folderWatcher.stopWatching()
-            showAlert(title: "Đã Tắt Giám Sát", message: "Đã tắt tính năng tự động phân loại khi ném file vào thư mục.")
+            showAlert(title: "Đã Tắt Giám Sát", message: "Đã tắt tính năng tự động phân loại khi thả file vào thư mục.")
         } else {
             setupSmartInboxFolder()
         }
@@ -277,7 +276,7 @@ class BookLibraryViewModel: ObservableObject {
     // MARK: - AI Batch Classification & Auto Move
     func classifyAndOrganizeSelectedBooks() {
         guard !selectedBookIDs.isEmpty else {
-            showAlert(title: "Chưa chọn sách", message: "Vui lòng chọn ít nhất một cuốn sách để AI phân loại.")
+            showAlert(title: "Chưa chọn sách", message: "Vui lòng chọn ít nhất một cuốn sách để phân loại.")
             return
         }
         
@@ -293,12 +292,12 @@ class BookLibraryViewModel: ObservableObject {
     private func performAIBatchOrganize(items: [BookItem]) {
         guard let root = libraryRootURL else { return }
         isAIOrganizing = true
-        aiProgressText = "Khởi động AI..."
+        aiProgressText = "Đang phân tích sách..."
         
         Task {
             var organizedCount = 0
             for (idx, book) in items.enumerated() {
-                self.aiProgressText = "Đang phân tích (\(idx + 1)/\(items.count)): \(book.name)"
+                self.aiProgressText = "Phân loại (\(idx + 1)/\(items.count)): \(book.name)"
                 
                 let res = await self.aiClassifier.classifyBook(at: book.url)
                 let targetCategoryDir = root.appendingPathComponent(res.category.rawValue, isDirectory: true)
@@ -324,8 +323,8 @@ class BookLibraryViewModel: ObservableObject {
             self.isAIOrganizing = false
             self.refreshLibrary()
             self.showAlert(
-                title: "🎉 AI Phân Loại Hoàn Tất",
-                message: "Đã tự động phân loại và gom \(organizedCount) cuốn sách vào các thư mục thể loại tương ứng!"
+                title: "Phân Loại Hoàn Tất",
+                message: "Đã tự động phân loại và sắp xếp \(organizedCount) cuốn sách vào các thư mục thể loại tương ứng."
             )
         }
     }

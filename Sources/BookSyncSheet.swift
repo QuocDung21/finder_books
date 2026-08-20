@@ -77,7 +77,7 @@ struct BookSyncSheet: View {
         .frame(minWidth: 800, minHeight: 560)
         .alert(isPresented: $showResultAlert) {
             Alert(
-                title: Text("🎉 Hoàn Tất Đồng Bộ"),
+                title: Text("Hoàn Tất Đồng Bộ"),
                 message: Text(resultMessage),
                 dismissButton: .default(Text("Đóng")) {
                     onSyncCompleted()
@@ -136,8 +136,8 @@ struct BookSyncSheet: View {
         HStack(spacing: 12) {
             Picker("Lọc", selection: $filterMode) {
                 Text("Tất Cả (\(items.count))").tag(SyncFilterTab.all)
-                Text("📥 Sách Mới (\(newBooksCount))").tag(SyncFilterTab.newOnly)
-                Text("⚠️ Sách Trùng (\(duplicateBooksCount))").tag(SyncFilterTab.duplicatesOnly)
+                Text("Sách Mới (\(newBooksCount))").tag(SyncFilterTab.newOnly)
+                Text("Sách Trùng (\(duplicateBooksCount))").tag(SyncFilterTab.duplicatesOnly)
             }
             .pickerStyle(.segmented)
             .frame(width: 320)
@@ -145,7 +145,7 @@ struct BookSyncSheet: View {
             Divider().frame(height: 18)
             
             // Quick Batch Presets
-            Button("Chọn Sách Mới -> Move") {
+            Button("Chọn Sách Mới -> Di Chuyển") {
                 setBatchAction(for: .newOnly, action: .moveToLibrary)
             }
             .buttonStyle(.bordered)
@@ -159,7 +159,7 @@ struct BookSyncSheet: View {
             
             Spacer()
             
-            Toggle("🤖 Phân loại AI khi Move", isOn: $autoClassifyWithAI)
+            Toggle("Tự động phân loại thể loại", isOn: $autoClassifyWithAI)
                 .font(.system(size: 11, weight: .medium))
         }
         .padding(.horizontal, 20)
@@ -320,9 +320,9 @@ struct BookSyncSheet: View {
             
             self.isExecuting = false
             self.resultMessage = """
-            ✅ Đã di chuyển về kho: \(summary.movedCount) cuốn sách
-            🗑️ Đã xoá ở nguồn (trùng lặp): \(summary.deletedCount) file
-            ⏭️ Đã bỏ qua: \(summary.skippedCount) file
+            Đã di chuyển về kho: \(summary.movedCount) cuốn sách
+            Đã xoá ở nguồn (trùng lặp): \(summary.deletedCount) file
+            Đã bỏ qua: \(summary.skippedCount) file
             """
             self.showResultAlert = true
         }

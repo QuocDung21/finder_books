@@ -14,22 +14,22 @@ struct BookLibraryView: View {
             
             Divider()
             
-            // 2. Organization & AI Action Bar
+            // 2. Action Bar
             organizationActionBar
             
-            // 3. AI Progress Banner (if active)
+            // 3. Status Progress Banner (if active)
             if vm.isAIOrganizing {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
-                    Text("🤖 \(vm.aiProgressText)")
-                        .font(.system(size: 11, weight: .semibold))
+                    Text(vm.aiProgressText)
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.primary)
                     Spacer()
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 6)
-                .background(Color.purple.opacity(0.12))
+                .background(Color.accentColor.opacity(0.1))
                 Divider()
             }
             
@@ -54,7 +54,7 @@ struct BookLibraryView: View {
                                 // Group Header
                                 HStack(spacing: 8) {
                                     Text(group.title)
-                                        .font(.system(size: 14, weight: .bold))
+                                        .font(.system(size: 13, weight: .bold))
                                         .foregroundColor(.primary)
                                     
                                     Text("•  \(group.totalPages) trang  •  \(String(format: "%.1f MB", group.totalSizeMB))")
@@ -76,9 +76,9 @@ struct BookLibraryView: View {
                                 }
                                 .padding(.horizontal, 4)
                                 
-                                // Group Content (Grid or List)
+                                // Group Content (Responsive Grid or List)
                                 if vm.viewMode == .grid {
-                                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 155, maximum: 185), spacing: 16)], spacing: 18) {
+                                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 16)], spacing: 18) {
                                         ForEach(group.books) { book in
                                             bookGridCard(book: book)
                                         }
@@ -91,9 +91,9 @@ struct BookLibraryView: View {
                                     }
                                     .padding(6)
                                     .background(Color(nsColor: .controlBackgroundColor))
-                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
                                             .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
                                     )
                                 }
@@ -134,7 +134,7 @@ struct BookLibraryView: View {
                     Text(vm.selectedSidebarItem.title)
                         .font(.system(size: 18, weight: .bold))
                     
-                    Text("\(vm.filteredBooks.count) cuốn")
+                    Text("\(vm.filteredBooks.count)")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 6)
@@ -143,10 +143,11 @@ struct BookLibraryView: View {
                         .cornerRadius(4)
                 }
                 
-                // Folder Breadcrumb Path
+                // Folder Path
                 HStack(spacing: 4) {
                     Image(systemName: "folder")
                         .font(.system(size: 10))
+                        .foregroundColor(.secondary)
                     Text(vm.libraryRootURL?.path ?? "")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
@@ -169,7 +170,7 @@ struct BookLibraryView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
                     .font(.system(size: 11))
-                TextField("Tìm sách, tác giả, thư mục...", text: $vm.searchText)
+                TextField("Tìm kiếm sách...", text: $vm.searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
                 if !vm.searchText.isEmpty {
@@ -191,7 +192,7 @@ struct BookLibraryView: View {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
             )
-            .frame(width: 200)
+            .frame(width: 180)
             
             // Grouping Mode
             Picker("Gom nhóm", selection: $vm.groupMode) {
@@ -200,7 +201,7 @@ struct BookLibraryView: View {
                 }
             }
             .pickerStyle(.menu)
-            .frame(width: 160)
+            .frame(width: 140)
             .controlSize(.small)
             
             // View Mode Toggle (Grid vs List)
@@ -221,7 +222,7 @@ struct BookLibraryView: View {
     // MARK: - Organization Action Bar
     private var organizationActionBar: some View {
         HStack(spacing: 8) {
-            // Quick Sync / Scan from Downloads
+            // Quick Sync / Scan from Source
             Button {
                 vm.promptScanAndSyncSourceFolder()
             } label: {
@@ -231,16 +232,15 @@ struct BookLibraryView: View {
                     } else {
                         Image(systemName: "arrow.triangle.2.circlepath")
                     }
-                    Text("Quét & Đồng Bộ (Downloads...)")
+                    Text("Quét & Nhập Sách...")
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.blue)
+            .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(vm.isSyncScanning)
-            .help("Quét sách từ thư mục Downloads hoặc thư mục khác, tự động so sánh với kho để chuyển sách mới và xoá file trùng")
+            .help("Quét sách từ thư mục nguồn (Downloads, Desktop...) để so sánh và nhập vào kho sách")
             
-            // AI Organize Button
+            // Auto Categorize Button
             Button {
                 if !vm.selectedBookIDs.isEmpty {
                     vm.classifyAndOrganizeSelectedBooks()
@@ -249,15 +249,14 @@ struct BookLibraryView: View {
                 }
             } label: {
                 HStack(spacing: 5) {
-                    Image(systemName: "sparkles")
-                    Text(vm.selectedBookIDs.isEmpty ? "AI Phân Loại Tất Cả" : "AI Phân Loại (\(vm.selectedBookIDs.count))")
+                    Image(systemName: "tag.fill")
+                    Text(vm.selectedBookIDs.isEmpty ? "Tự Động Phân Loại" : "Phân Loại (\(vm.selectedBookIDs.count))")
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.purple)
+            .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(vm.isAIOrganizing || vm.books.isEmpty)
-            .help("Dùng AI macOS đọc nội dung sách và tự động gom vào thư mục thể loại tương ứng")
+            .help("Tự động nhận diện nội dung sách và chuyển vào thư mục thể loại tương ứng")
             
             // Smart Inbox Auto-Watch Toggle
             Button {
@@ -268,19 +267,19 @@ struct BookLibraryView: View {
                         .fill(vm.folderWatcher.isWatching ? Color.green : Color.secondary)
                         .frame(width: 7, height: 7)
                     Image(systemName: "tray.and.arrow.down.fill")
-                    Text(vm.folderWatcher.isWatching ? "Hộp Thư Đang Bật" : "Bật Hộp Thư Tự Động")
+                    Text(vm.folderWatcher.isWatching ? "Hộp Thư: Đang Bật" : "Bật Hộp Thư Tự Động")
                 }
             }
             .buttonStyle(.borderedProminent)
             .tint(vm.folderWatcher.isWatching ? Color.green : Color.secondary.opacity(0.2))
             .foregroundColor(vm.folderWatcher.isWatching ? .white : .primary)
             .controlSize(.small)
-            .help("Khi bật: Chỉ cần thả bất kỳ file PDF nào vào thư mục 📥_Inbox_Gom_Sach, AI sẽ tự động phân loại và chuyển vào thư mục chuẩn")
+            .help("Tự động phân loại sách khi người dùng thả file PDF vào thư mục Hộp Thư Đến")
             
             Button {
                 vm.groupSelectedBooksPrompt()
             } label: {
-                Label("Gom Thư Mục Mới", systemImage: "folder.badge.plus")
+                Label("Gom Thư Mục", systemImage: "folder.badge.plus")
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -321,7 +320,7 @@ struct BookLibraryView: View {
                 Image(systemName: "arrow.clockwise")
             }
             .buttonStyle(.borderless)
-            .help("Quét lại thư mục")
+            .help("Làm mới danh sách sách")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 7)
@@ -335,11 +334,11 @@ struct BookLibraryView: View {
         
         return VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .topTrailing) {
-                // Book Cover with Realistic Apple-style Shadow
+                // Book Cover with Realistic macOS Shadow
                 ZStack {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(Color.white)
-                        .shadow(color: Color.black.opacity(0.18), radius: 6, x: 0, y: 3)
+                        .shadow(color: Color.black.opacity(0.14), radius: 5, x: 0, y: 2)
                     
                     if let thumb = vm.thumbnail(for: book) {
                         Image(nsImage: thumb)
@@ -348,7 +347,7 @@ struct BookLibraryView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                     } else {
                         VStack(spacing: 4) {
-                            Image(systemName: "book.closed")
+                            Image(systemName: "doc.text.fill")
                                 .font(.system(size: 32))
                                 .foregroundColor(.secondary)
                             Text("PDF")
@@ -364,7 +363,7 @@ struct BookLibraryView: View {
                     vm.toggleSelection(for: book.id)
                 } label: {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 16))
+                        .font(.system(size: 15))
                         .foregroundColor(isSelected ? .accentColor : .white)
                         .background(isSelected ? Color.white : Color.black.opacity(0.4))
                         .clipShape(Circle())
@@ -376,23 +375,23 @@ struct BookLibraryView: View {
             // Book Details
             VStack(alignment: .leading, spacing: 4) {
                 Text(book.name)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 12, weight: .semibold))
                     .lineLimit(2)
                     .foregroundColor(.primary)
                 
-                // AI Category Pill Badge
+                // Category Pill Badge
                 if let cat = detectedCat, cat != .general {
                     HStack(spacing: 3) {
                         Image(systemName: cat.icon)
                             .font(.system(size: 9))
                         Text(cat.rawValue)
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 9, weight: .medium))
                             .lineLimit(1)
                     }
-                    .foregroundColor(.purple)
+                    .foregroundColor(.secondary)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
-                    .background(Color.purple.opacity(0.1))
+                    .background(Color.secondary.opacity(0.1))
                     .cornerRadius(4)
                 }
                 
@@ -453,22 +452,22 @@ struct BookLibraryView: View {
         }
         .padding(10)
         .background(isSelected ? Color.accentColor.opacity(0.08) : Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.12), lineWidth: isSelected ? 2 : 1)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.1), lineWidth: isSelected ? 2 : 1)
         )
         .onTapGesture(count: 2) {
             onSelectBookToRead(book.url)
         }
         .contextMenu {
-            Button("📖 Đọc Sách") {
+            Button("Đọc Sách") {
                 onSelectBookToRead(book.url)
             }
-            Button("✂️ Tách Sách Này") {
+            Button("Tách Sách Này") {
                 onSelectBookToSplit(book.url)
             }
-            Button("📂 Hiện Trong Finder") {
+            Button("Hiện Trong Finder") {
                 vm.revealInFinder(book: book)
             }
             Divider()
@@ -526,7 +525,7 @@ struct BookLibraryView: View {
                     if let cat = detectedCat, cat != .general {
                         Text("• \(cat.rawValue)")
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.purple)
+                            .foregroundColor(.secondary)
                     }
                 }
             }
@@ -573,15 +572,15 @@ struct BookLibraryView: View {
     // MARK: - Empty Library View
     private var emptyLibraryView: some View {
         VStack(spacing: 14) {
-            Image(systemName: "books.vertical.fill")
-                .font(.system(size: 48))
-                .foregroundColor(.secondary.opacity(0.3))
+            Image(systemName: "books.vertical")
+                .font(.system(size: 44))
+                .foregroundColor(.secondary.opacity(0.4))
             
-            Text("Không tìm thấy sách PDF phù hợp")
-                .font(.system(size: 15, weight: .bold))
+            Text("Không tìm thấy sách PDF trong thư mục")
+                .font(.system(size: 14, weight: .bold))
                 .foregroundColor(.primary)
             
-            Text("Chọn thư mục khác hoặc dùng tính năng Quét & Đồng Bộ để nhập sách.")
+            Text("Chọn thư mục khác hoặc dùng tính năng Quét & Nhập Sách để thêm vào kho.")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
             
@@ -592,7 +591,7 @@ struct BookLibraryView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
                 
-                Button("Quét Sách Từ Downloads...") {
+                Button("Quét & Nhập Sách...") {
                     vm.promptScanAndSyncSourceFolder()
                 }
                 .buttonStyle(.borderedProminent)

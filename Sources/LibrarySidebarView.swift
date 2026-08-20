@@ -57,8 +57,8 @@ struct LibrarySidebarView: View {
                 }
             }
             
-            // MARK: - Section 2: Thể Loại AI
-            Section("Thể Loại AI") {
+            // MARK: - Section 2: Thể Loại
+            Section("Thể Loại") {
                 ForEach(BookCategory.allCases.filter { $0 != .general }) { cat in
                     NavigationLink(value: LibrarySidebarItem.category(cat)) {
                         Label {

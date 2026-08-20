@@ -33,15 +33,15 @@ enum BookCategory: String, CaseIterable, Identifiable {
     
     var folderName: String {
         switch self {
-        case .technology: return "💻_Cong_Nghe_Lap_Trinh"
-        case .business: return "📈_Kinh_Te_Tai_Chinh"
-        case .literature: return "📚_Van_Hoc_Tieu_Thuyet"
-        case .selfHelp: return "🌱_Ky_Nang_Tam_Ly"
-        case .scienceHistory: return "🔬_Khoa_Hoc_Lich_Su"
-        case .languageEducation: return "🗣️_Ngoai_Ngu_Giao_Trinh"
-        case .artDesign: return "🎨_Nghe_Thuat_Thiet_Ke"
-        case .comicsManga: return "📖_Truyen_Tranh_Manga"
-        case .general: return "📁_Tai_Lieu_Khac"
+        case .technology: return "Cong_Nghe_Lap_Trinh"
+        case .business: return "Kinh_Te_Tai_Chinh"
+        case .literature: return "Van_Hoc_Tieu_Thuyet"
+        case .selfHelp: return "Ky_Nang_Tam_Ly"
+        case .scienceHistory: return "Khoa_Hoc_Lich_Su"
+        case .languageEducation: return "Ngoai_Ngu_Giao_Trinh"
+        case .artDesign: return "Nghe_Thuat_Thiet_Ke"
+        case .comicsManga: return "Truyen_Tranh_Manga"
+        case .general: return "Tai_Lieu_Khac"
         }
     }
     
