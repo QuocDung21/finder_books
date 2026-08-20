@@ -26,6 +26,7 @@ struct BookReaderView: View {
     @State private var activePenColor: Color = .red
     @State private var activePenWidth: CGFloat = 3.0
     @State private var isHighlighter: Bool = false
+    @State private var showWiFiSyncSheet: Bool = false
 
     private let penColors: [(Color, String)] = [
         (.black, "Đen"),
@@ -165,6 +166,9 @@ struct BookReaderView: View {
         .sheet(isPresented: $showNotebookSheet) {
             VocabularyNotebookView()
         }
+        .sheet(isPresented: $showWiFiSyncSheet) {
+            WiFiSyncControlSheet()
+        }
     }
 
     // MARK: - Responsive Reader Toolbar
@@ -191,34 +195,34 @@ struct BookReaderView: View {
                     .frame(maxWidth: 160, alignment: .leading)
             }
 
-            // Wi-Fi Live Sync Status Pill (P2P Mac ↔ iPad)
+            // Wi-Fi Live Sync Status Pill (P2P Mac ↔ iPad & IP Direct)
             Button {
-                if syncManager.isSessionActive {
-                    syncManager.stopSyncSession()
-                } else {
-                    syncManager.startSyncSession()
-                }
+                showWiFiSyncSheet = true
             } label: {
                 HStack(spacing: 4) {
+                    let isConnected = syncManager.isDirectTCPConnected || !syncManager.connectedPeers.isEmpty
                     Circle()
-                        .fill(syncManager.connectedPeers.isEmpty ? Color.orange : Color.green)
+                        .fill(isConnected ? Color.green : Color.orange)
                         .frame(width: 6, height: 6)
                     
                     if let peer = syncManager.connectedPeers.first {
                         Text("\(peer.displayName)")
                             .font(.system(size: 10, weight: .semibold))
+                    } else if syncManager.isDirectTCPConnected {
+                        Text("Wi-Fi Direct")
+                            .font(.system(size: 10, weight: .semibold))
                     } else {
-                        Text(syncManager.isSessionActive ? "Tìm iPad..." : "Bật Wi-Fi Sync")
+                        Text("Wi-Fi Sync")
                             .font(.system(size: 10))
                     }
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
                 .background(Color.platformControlBackground)
                 .clipShape(Capsule())
             }
             .buttonStyle(.plain)
-            .help("Đồng bộ nét bút Apple Pencil thời gian thực qua Wi-Fi với iPad/Mac")
+            .help("Quản lý đồng bộ Wi-Fi & IP Direct giữa Mac và iPad")
 
             Spacer()
 

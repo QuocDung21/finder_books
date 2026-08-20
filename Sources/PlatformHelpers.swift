@@ -106,3 +106,29 @@ struct FlowLayout: Layout {
     }
 }
 
+// MARK: - Local Wi-Fi IP Helper
+func getLocalIPAddress() -> String? {
+    var address: String?
+    var ifaddr: UnsafeMutablePointer<ifaddrs>?
+    guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else { return nil }
+    for ptr in sequence(first: firstAddr, next: { $0.pointee.ifa_next }) {
+        let flags = Int32(ptr.pointee.ifa_flags)
+        var addr = ptr.pointee.ifa_addr.pointee
+        if (flags & (IFF_UP|IFF_RUNNING|IFF_LOOPBACK)) == (IFF_UP|IFF_RUNNING) {
+            if addr.sa_family == UInt8(AF_INET) {
+                var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                if getnameinfo(&ptr.pointee.ifa_addr.pointee, socklen_t(addr.sa_len), &hostname, socklen_t(hostname.count), nil, socklen_t(0), NI_NUMERICHOST) == 0 {
+                    let name = String(cString: ptr.pointee.ifa_name)
+                    if name == "en0" || name == "en1" || name.starts(with: "en") || name.starts(with: "wlan") {
+                        address = String(cString: hostname)
+                        break
+                    }
+                }
+            }
+        }
+    }
+    freeifaddrs(ifaddr)
+    return address
+}
+
+

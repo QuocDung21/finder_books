@@ -1,5 +1,6 @@
 import Foundation
 import MultipeerConnectivity
+import Network
 import SwiftUI
 
 // MARK: - Peer Connection State
@@ -19,11 +20,11 @@ enum PeerSyncState: Equatable {
     }
 }
 
-// MARK: - Multipeer Live Companion & Library Sync Manager
+// MARK: - Multipeer & Direct TCP Dual-Engine Live Companion Manager
 class LiveCompanionSyncManager: NSObject, ObservableObject {
     static let shared = LiveCompanionSyncManager()
     
-    // Short 7-char service type for maximum compatibility across macOS & iOS Bonjour
+    // 1. Multipeer Service
     private let serviceType = "fb-sync"
     let myPeerID: MCPeerID
     let session: MCSession
@@ -31,10 +32,19 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
     private var browser: MCNearbyServiceBrowser
     private var reconnectTimer: Timer?
     
+    // 2. Direct TCP / Network.framework Engine (Bypasses all router multicast issues)
+    private var tcpListener: NWListener?
+    private var activeTCPConnections: [NWConnection] = []
+    private var clientTCPConnection: NWConnection?
+    let defaultTCPPort: UInt16 = 8099
+    
     @Published var connectionState: PeerSyncState = .disconnected
     @Published var isSessionActive: Bool = false
     @Published var connectedPeers: [MCPeerID] = []
     @Published var discoveredPeers: [MCPeerID] = []
+    @Published var localIP: String = "127.0.0.1"
+    @Published var manualConnectIP: String = ""
+    @Published var isDirectTCPConnected: Bool = false
     
     // Inked strokes storage (Page Index -> [LiveInkStroke])
     @Published var pageStrokes: [Int: [LiveInkStroke]] = [:]
@@ -74,9 +84,27 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         self.advertiser.delegate = self
         self.browser.delegate = self
         
-        // Auto-start on initialize
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        // Fetch local Wi-Fi IP
+        if let ip = getLocalIPAddress() {
+            self.localIP = ip
+        }
+        
+        // Restore last known server IP
+        if let savedIP = UserDefaults.standard.string(forKey: "last_known_sync_ip"), !savedIP.isEmpty {
+            self.manualConnectIP = savedIP
+        }
+        
+        // Auto-start engines on launch
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.startSyncSession()
+            self?.startTCPServer()
+            
+            #if os(iOS)
+            // On iPad, if there's a saved Mac IP, attempt direct connect immediately
+            if let lastIP = self?.manualConnectIP, !lastIP.isEmpty {
+                self?.connectDirectIP(ip: lastIP)
+            }
+            #endif
         }
     }
     
@@ -88,6 +116,10 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         connectionState = .searching
         discoveredPeers.removeAll()
         
+        if let ip = getLocalIPAddress() {
+            self.localIP = ip
+        }
+        
         advertiser.startAdvertisingPeer()
         browser.startBrowsingForPeers()
         
@@ -96,8 +128,7 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         reconnectTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self, self.isSessionActive else { return }
-                if self.connectedPeers.isEmpty {
-                    // Refresh browsing to discover freshly opened peers
+                if self.connectedPeers.isEmpty && !self.isDirectTCPConnected {
                     self.browser.stopBrowsingForPeers()
                     self.browser.startBrowsingForPeers()
                 }
@@ -116,6 +147,10 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         
         advertiser.startAdvertisingPeer()
         browser.startBrowsingForPeers()
+        
+        if !manualConnectIP.isEmpty {
+            connectDirectIP(ip: manualConnectIP)
+        }
     }
     
     @MainActor
@@ -124,75 +159,197 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         browser.invitePeer(peer, to: session, withContext: nil, timeout: 30)
     }
     
-    @MainActor
-    func stopSyncSession() {
-        isSessionActive = false
-        reconnectTimer?.invalidate()
-        reconnectTimer = nil
-        advertiser.stopAdvertisingPeer()
-        browser.stopBrowsingForPeers()
-        session.disconnect()
-        connectedPeers.removeAll()
-        discoveredPeers.removeAll()
-        connectionState = .disconnected
+    // MARK: - Direct TCP Server Engine (Mac & iPad)
+    func startTCPServer() {
+        do {
+            let port = NWEndpoint.Port(rawValue: defaultTCPPort)!
+            let listener = try NWListener(using: .tcp, on: port)
+            
+            listener.newConnectionHandler = { [weak self] newConnection in
+                self?.handleIncomingTCPConnection(newConnection)
+            }
+            
+            listener.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    print("🚀 Direct TCP Server listening on port \(self.defaultTCPPort)")
+                case .failed(let err):
+                    print("❌ TCP Server failed: \(err)")
+                default:
+                    break
+                }
+            }
+            
+            listener.start(queue: .main)
+            self.tcpListener = listener
+        } catch {
+            print("Failed to start TCP listener: \(error)")
+        }
     }
     
-    // MARK: - 1. Send Book File Directly (AirDrop-like P2P Stream)
+    private func handleIncomingTCPConnection(_ conn: NWConnection) {
+        conn.stateUpdateHandler = { [weak self] state in
+            Task { @MainActor in
+                switch state {
+                case .ready:
+                    let remoteHost = conn.endpoint.debugDescription
+                    print("🟢 Direct TCP Peer connected: \(remoteHost)")
+                    self?.activeTCPConnections.append(conn)
+                    self?.isDirectTCPConnected = true
+                    self?.connectionState = .connected(peerName: "Thiết Bị (IP Direct)")
+                    self?.receiveNextTCPPacket(from: conn)
+                case .failed, .cancelled:
+                    self?.activeTCPConnections.removeAll(where: { $0 === conn })
+                    if self?.activeTCPConnections.isEmpty == true && self?.clientTCPConnection == nil {
+                        self?.isDirectTCPConnected = false
+                    }
+                default:
+                    break
+                }
+            }
+        }
+        conn.start(queue: .main)
+    }
+    
+    // MARK: - Direct TCP Client Connect (IP Input)
     @MainActor
-    func sendBookFile(url: URL, to targetPeer: MCPeerID? = nil) {
-        guard let peer = targetPeer ?? connectedPeers.first else {
-            print("No peer available to send book")
-            return
+    func connectDirectIP(ip: String) {
+        let trimmed = ip.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        
+        UserDefaults.standard.set(trimmed, forKey: "last_known_sync_ip")
+        self.manualConnectIP = trimmed
+        
+        clientTCPConnection?.cancel()
+        
+        guard let port = NWEndpoint.Port(rawValue: defaultTCPPort) else { return }
+        let host = NWEndpoint.Host(trimmed)
+        let conn = NWConnection(host: host, port: port, using: .tcp)
+        
+        connectionState = .connecting(peerName: trimmed)
+        
+        conn.stateUpdateHandler = { [weak self] state in
+            Task { @MainActor in
+                switch state {
+                case .ready:
+                    print("🟢 Successfully connected to Mac IP: \(trimmed)")
+                    self?.clientTCPConnection = conn
+                    self?.isDirectTCPConnected = true
+                    self?.connectionState = .connected(peerName: "Máy Mac (\(trimmed))")
+                    self?.receiveNextTCPPacket(from: conn)
+                case .failed(let err):
+                    print("❌ Direct connect failed: \(err)")
+                    self?.isDirectTCPConnected = false
+                    if self?.connectedPeers.isEmpty == true {
+                        self?.connectionState = .disconnected
+                    }
+                default:
+                    break
+                }
+            }
         }
         
+        conn.start(queue: .main)
+    }
+    
+    // MARK: - Receive Loop for TCP Packets
+    private func receiveNextTCPPacket(from conn: NWConnection) {
+        // Read 4-byte header length
+        conn.receive(minimumIncompleteLength: 4, maximumLength: 4) { [weak self] headerData, _, isComplete, error in
+            guard let self = self, let data = headerData, data.count == 4, error == nil else {
+                return
+            }
+            
+            let length = data.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
+            
+            // Read exact payload bytes
+            conn.receive(minimumIncompleteLength: Int(length), maximumLength: Int(length)) { [weak self] bodyData, _, isComplete, err in
+                guard let self = self, let bData = bodyData, err == nil else { return }
+                
+                if let payload = try? JSONDecoder().decode(LiveDrawingPayload.self, from: bData) {
+                    Task { @MainActor in
+                        self.processIncomingPayload(payload)
+                    }
+                }
+                
+                // Continue loop
+                self.receiveNextTCPPacket(from: conn)
+            }
+        }
+    }
+    
+    // MARK: - Universal Send Payload (Broadcasts to Multipeer & TCP Sockets)
+    private func sendPayload(_ payload: LiveDrawingPayload) {
+        guard let data = try? JSONEncoder().encode(payload) else { return }
+        
+        // 1. Multipeer
+        if !session.connectedPeers.isEmpty {
+            try? session.send(data, toPeers: session.connectedPeers, with: .reliable)
+        }
+        
+        // 2. Direct TCP Connections
+        var length = UInt32(data.count).bigEndian
+        var packetData = Data(bytes: &length, count: 4)
+        packetData.append(data)
+        
+        for conn in activeTCPConnections {
+            conn.send(content: packetData, completion: .idempotent)
+        }
+        
+        clientTCPConnection?.send(content: packetData, completion: .idempotent)
+    }
+    
+    // MARK: - 1. Send Book File Directly
+    @MainActor
+    func sendBookFile(url: URL, to targetPeer: MCPeerID? = nil) {
         let filename = url.lastPathComponent
+        let targetName = targetPeer?.displayName ?? (isDirectTCPConnected ? "Thiết Bị Qua IP" : "iPad/Mac")
+        
         self.activeTransfer = FileTransferStatus(
             filename: filename,
             progress: 0.05,
             isReceiving: false,
-            statusText: "Đang gửi sang \(peer.displayName)..."
+            statusText: "Đang gửi sang \(targetName)..."
         )
         
-        let progress = session.sendResource(at: url, withName: filename, toPeer: peer) { [weak self] error in
-            Task { @MainActor in
-                if let error = error {
-                    print("Failed to send book: \(error)")
-                    self?.activeTransfer = FileTransferStatus(
-                        filename: filename,
-                        progress: 0.0,
-                        isReceiving: false,
-                        statusText: "Lỗi gửi: \(error.localizedDescription)"
-                    )
-                } else {
-                    self?.activeTransfer = FileTransferStatus(
-                        filename: filename,
-                        progress: 1.0,
-                        isReceiving: false,
-                        statusText: "Đã gửi thành công sang \(peer.displayName)!"
-                    )
-                }
-                
-                // Clear after 4 seconds
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
-                self?.activeTransfer = nil
-            }
-        }
-        
-        // Observe progress
-        if let p = progress {
-            Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+        if let peer = targetPeer ?? connectedPeers.first {
+            let progress = session.sendResource(at: url, withName: filename, toPeer: peer) { [weak self] error in
                 Task { @MainActor in
-                    if p.isFinished || p.isCancelled {
-                        timer.invalidate()
+                    if let error = error {
+                        self?.activeTransfer = FileTransferStatus(
+                            filename: filename,
+                            progress: 0.0,
+                            isReceiving: false,
+                            statusText: "Lỗi gửi: \(error.localizedDescription)"
+                        )
                     } else {
-                        self.activeTransfer?.progress = p.fractionCompleted
+                        self?.activeTransfer = FileTransferStatus(
+                            filename: filename,
+                            progress: 1.0,
+                            isReceiving: false,
+                            statusText: "Đã gửi thành công sang \(peer.displayName)!"
+                        )
+                    }
+                    try? await Task.sleep(nanoseconds: 4_000_000_000)
+                    self?.activeTransfer = nil
+                }
+            }
+            
+            if let p = progress {
+                Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+                    Task { @MainActor in
+                        if p.isFinished || p.isCancelled {
+                            timer.invalidate()
+                        } else {
+                            self.activeTransfer?.progress = p.fractionCompleted
+                        }
                     }
                 }
             }
         }
     }
     
-    // MARK: - 2. Broadcast Reading Progress / Request Open on Peer
+    // MARK: - 2. Broadcast Reading Progress
     @MainActor
     func requestOpenBookOnPeer(bookName: String, pageIndex: Int) {
         let payload = LiveDrawingPayload(
@@ -252,8 +409,6 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         current.append(stroke)
         pageStrokes[stroke.pageIndex] = current
         
-        guard !session.connectedPeers.isEmpty else { return }
-        
         let payload = LiveDrawingPayload(
             action: .addStroke,
             stroke: stroke,
@@ -296,14 +451,57 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         sendPayload(payload)
     }
     
-    private func sendPayload(_ payload: LiveDrawingPayload) {
-        guard !session.connectedPeers.isEmpty,
-              let data = try? JSONEncoder().encode(payload) else { return }
-        
-        do {
-            try session.send(data, toPeers: session.connectedPeers, with: .reliable)
-        } catch {
-            print("Failed to send live drawing payload: \(error)")
+    // MARK: - Payload Processing Pipeline
+    @MainActor
+    private func processIncomingPayload(_ payload: LiveDrawingPayload) {
+        switch payload.action {
+        case .addStroke:
+            if let stroke = payload.stroke {
+                var list = self.pageStrokes[stroke.pageIndex] ?? []
+                if !list.contains(where: { $0.id == stroke.id }) {
+                    list.append(stroke)
+                    self.pageStrokes[stroke.pageIndex] = list
+                }
+            }
+            
+        case .clearPage:
+            if let page = payload.pageIndex {
+                self.pageStrokes[page] = []
+            }
+            
+        case .jumpToPage:
+            if let page = payload.pageIndex {
+                self.onRemotePageJump?(page)
+            }
+            
+        case .syncAllStrokes:
+            if let all = payload.allStrokes {
+                for s in all {
+                    var list = self.pageStrokes[s.pageIndex] ?? []
+                    if !list.contains(where: { $0.id == s.id }) {
+                        list.append(s)
+                        self.pageStrokes[s.pageIndex] = list
+                    }
+                }
+            }
+            
+        case .syncCatalog:
+            if let cat = payload.catalog {
+                self.remoteCatalog = cat
+            }
+            
+        case .openBookOnPeer:
+            if let bName = payload.targetBookName, let page = payload.pageIndex {
+                self.onRemoteOpenBookRequest?(bName, page)
+            }
+            
+        case .syncReadingProgress:
+            if let bName = payload.targetBookName, let page = payload.pageIndex {
+                self.remoteReadingStatus = (bookName: bName, pageIndex: page)
+            }
+            
+        case .requestBook:
+            break
         }
     }
 }
@@ -318,7 +516,6 @@ extension LiveCompanionSyncManager: MCSessionDelegate {
                 self.connectionState = .connected(peerName: peerID.displayName)
                 print("🟢 Multipeer Connected to: \(peerID.displayName)")
                 
-                // Sync all current strokes with new peer
                 let allFlatStrokes = self.pageStrokes.values.flatMap { $0 }
                 let payload = LiveDrawingPayload(
                     action: .syncAllStrokes,
@@ -333,14 +530,10 @@ extension LiveCompanionSyncManager: MCSessionDelegate {
                 
             case .connecting:
                 self.connectionState = .connecting(peerName: peerID.displayName)
-                print("🟡 Multipeer Connecting to: \(peerID.displayName)...")
                 
             case .notConnected:
-                print("🔴 Multipeer Disconnected from: \(peerID.displayName)")
-                if session.connectedPeers.isEmpty {
+                if session.connectedPeers.isEmpty && !self.isDirectTCPConnected {
                     self.connectionState = self.isSessionActive ? .searching : .disconnected
-                } else {
-                    self.connectionState = .connected(peerName: session.connectedPeers.first?.displayName ?? "Peer")
                 }
             @unknown default:
                 break
@@ -350,63 +543,13 @@ extension LiveCompanionSyncManager: MCSessionDelegate {
     
     func session(_ session: MCSession, didReceive data: Data, fromPeer peerID: MCPeerID) {
         guard let payload = try? JSONDecoder().decode(LiveDrawingPayload.self, from: data) else { return }
-        
         Task { @MainActor in
-            switch payload.action {
-            case .addStroke:
-                if let stroke = payload.stroke {
-                    var list = self.pageStrokes[stroke.pageIndex] ?? []
-                    if !list.contains(where: { $0.id == stroke.id }) {
-                        list.append(stroke)
-                        self.pageStrokes[stroke.pageIndex] = list
-                    }
-                }
-                
-            case .clearPage:
-                if let page = payload.pageIndex {
-                    self.pageStrokes[page] = []
-                }
-                
-            case .jumpToPage:
-                if let page = payload.pageIndex {
-                    self.onRemotePageJump?(page)
-                }
-                
-            case .syncAllStrokes:
-                if let all = payload.allStrokes {
-                    for s in all {
-                        var list = self.pageStrokes[s.pageIndex] ?? []
-                        if !list.contains(where: { $0.id == s.id }) {
-                            list.append(s)
-                            self.pageStrokes[s.pageIndex] = list
-                        }
-                    }
-                }
-                
-            case .syncCatalog:
-                if let cat = payload.catalog {
-                    self.remoteCatalog = cat
-                }
-                
-            case .openBookOnPeer:
-                if let bName = payload.targetBookName, let page = payload.pageIndex {
-                    self.onRemoteOpenBookRequest?(bName, page)
-                }
-                
-            case .syncReadingProgress:
-                if let bName = payload.targetBookName, let page = payload.pageIndex {
-                    self.remoteReadingStatus = (bookName: bName, pageIndex: page)
-                }
-                
-            case .requestBook:
-                break
-            }
+            self.processIncomingPayload(payload)
         }
     }
     
     func session(_ session: MCSession, didReceive stream: InputStream, withName streamName: String, fromPeer peerID: MCPeerID) {}
     
-    // MARK: - Incoming Resource / File Transfer Callbacks
     func session(_ session: MCSession, didStartReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID, with progress: Progress) {
         Task { @MainActor in
             self.activeTransfer = FileTransferStatus(
@@ -431,7 +574,6 @@ extension LiveCompanionSyncManager: MCSessionDelegate {
     func session(_ session: MCSession, didFinishReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID, at localURL: URL?, withError error: Error?) {
         Task { @MainActor in
             if let error = error {
-                print("Error receiving resource: \(error)")
                 self.activeTransfer = FileTransferStatus(
                     filename: resourceName,
                     progress: 0.0,
@@ -443,7 +585,6 @@ extension LiveCompanionSyncManager: MCSessionDelegate {
             
             guard let tempURL = localURL else { return }
             
-            // Save received book file to local Documents directory
             let fileManager = FileManager.default
             let documentsDir: URL
             #if os(macOS)
@@ -469,7 +610,6 @@ extension LiveCompanionSyncManager: MCSessionDelegate {
                 self.newlyReceivedBookURL = destURL
                 self.onBookReceived?(destURL)
                 
-                // Clear banner after 4s
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
                 self.activeTransfer = nil
             } catch {
@@ -482,7 +622,7 @@ extension LiveCompanionSyncManager: MCSessionDelegate {
 // MARK: - MCNearbyServiceAdvertiserDelegate
 extension LiveCompanionSyncManager: MCNearbyServiceAdvertiserDelegate {
     func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didReceiveInvitationFromPeer peerID: MCPeerID, withContext context: Data?, invitationHandler: @escaping (Bool, MCSession?) -> Void) {
-        print("📨 Received invitation from: \(peerID.displayName) ➔ Accepting...")
+        print("📨 Received Multipeer invitation from: \(peerID.displayName) ➔ Accepting...")
         invitationHandler(true, self.session)
     }
     
@@ -500,7 +640,6 @@ extension LiveCompanionSyncManager: MCNearbyServiceBrowserDelegate {
                 self.discoveredPeers.append(peerID)
             }
             
-            // Avoid invitation collision: Peer with lower hash sends the invite
             if self.myPeerID.displayName.hashValue < peerID.displayName.hashValue {
                 print("🚀 Auto-inviting: \(peerID.displayName)...")
                 browser.invitePeer(peerID, to: self.session, withContext: nil, timeout: 30)
@@ -509,7 +648,6 @@ extension LiveCompanionSyncManager: MCNearbyServiceBrowserDelegate {
     }
     
     func browser(_ browser: MCNearbyServiceBrowser, lostPeer peerID: MCPeerID) {
-        print("💨 Lost peer: \(peerID.displayName)")
         Task { @MainActor in
             self.discoveredPeers.removeAll(where: { $0 == peerID })
         }

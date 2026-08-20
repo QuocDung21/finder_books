@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1185E139B96ABB7C7E632F0D /* WiFiSyncControlSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40FCE00A64D0D1263E57B500 /* WiFiSyncControlSheet.swift */; };
 		1189DDDE328805D6C71B647B /* LiveSyncModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5728214994566A4F0D2366A /* LiveSyncModels.swift */; };
 		19903A242046CB331800807E /* LibrarySidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19342FA7EDC8F3F3571F53A9 /* LibrarySidebarView.swift */; };
 		1B01F66A298BA41E9D87EB19 /* VisualizerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92B9CF75247F1783AB05A83D /* VisualizerView.swift */; };
@@ -55,6 +56,7 @@
 		317C9C0491DABE8AFA6BE017 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		344D333534546AA37714E4CD /* BookLibraryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookLibraryModel.swift; sourceTree = "<group>"; };
 		3A03F29DB31106B473D8C4E2 /* LiveInkingCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveInkingCanvasView.swift; sourceTree = "<group>"; };
+		40FCE00A64D0D1263E57B500 /* WiFiSyncControlSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiFiSyncControlSheet.swift; sourceTree = "<group>"; };
 		4307DB16CC41175356411C4D /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		47AC90CEB25C2738A073698D /* BookLibraryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookLibraryViewModel.swift; sourceTree = "<group>"; };
 		49C5AF4D1ED140C71CB54F2D /* FinderBooks.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FinderBooks.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -145,6 +147,7 @@
 				92B9CF75247F1783AB05A83D /* VisualizerView.swift */,
 				FF52F8CAA66B2D06C3E2D1A9 /* VocabularyNotebookModel.swift */,
 				D655C76D8F2BCBA03E248158 /* VocabularyNotebookView.swift */,
+				40FCE00A64D0D1263E57B500 /* WiFiSyncControlSheet.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -252,6 +255,7 @@
 				1B01F66A298BA41E9D87EB19 /* VisualizerView.swift in Sources */,
 				201CB108C1A1262C50E11434 /* VocabularyNotebookModel.swift in Sources */,
 				50782AE21D9AE4EB332DB53A /* VocabularyNotebookView.swift in Sources */,
+				1185E139B96ABB7C7E632F0D /* WiFiSyncControlSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
