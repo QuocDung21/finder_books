@@ -39,7 +39,7 @@ struct BookRenameSheet: View {
                         .shadow(color: Color.black.opacity(0.15), radius: 5, x: 0, y: 2)
 
                     if let doc = PDFDocument(url: book.url), let page = doc.page(at: 0) {
-                        Image(nsImage: page.thumbnail(of: CGSize(width: 120, height: 160), for: .cropBox))
+                        Image(platformImage: page.platformThumbnail(size: CGSize(width: 120, height: 160)))
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))

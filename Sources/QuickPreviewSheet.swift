@@ -192,7 +192,7 @@ struct QuickPreviewSheet: View {
             if let thumb = vm.getPageThumbnail(pageNumber: pageNumber, size: CGSize(width: isFullWidth ? 300 : 240, height: isFullWidth ? 380 : 310)) {
                 HStack {
                     Spacer()
-                    Image(nsImage: thumb)
+                    Image(platformImage: thumb)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(maxHeight: isFullWidth ? 340 : 280)

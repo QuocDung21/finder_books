@@ -200,7 +200,7 @@ struct BookReaderView: View {
                                             .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 1)
                                         
                                         if let doc = PDFDocument(url: bookURL), let page = doc.page(at: pageIdx) {
-                                            Image(nsImage: page.thumbnail(of: CGSize(width: 90, height: 120), for: .cropBox))
+                                            Image(platformImage: page.platformThumbnail(size: CGSize(width: 90, height: 120)))
                                                 .resizable()
                                                 .aspectRatio(contentMode: .fit)
                                                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))

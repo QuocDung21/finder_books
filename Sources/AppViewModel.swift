@@ -9,7 +9,7 @@ class AppViewModel: ObservableObject {
     @Published var fileName: String = ""
     @Published var totalPages: Int = 0
     @Published var fileSizeMB: Double = 0.0
-    @Published var thumbnailImage: NSImage? = nil
+    @Published var thumbnailImage: PlatformImage? = nil
     private(set) var loadedPDFDocument: PDFDocument? = nil
 
     // Quick preview state
@@ -96,7 +96,7 @@ class AppViewModel: ObservableObject {
 
         // Generate PDF Thumbnail
         if let firstPage = doc.page(at: 0) {
-            thumbnailImage = firstPage.thumbnail(of: CGSize(width: 140, height: 180), for: .cropBox)
+            thumbnailImage = firstPage.platformThumbnail(size: CGSize(width: 140, height: 180))
         } else {
             thumbnailImage = nil
         }
@@ -126,10 +126,10 @@ class AppViewModel: ObservableObject {
     }
 
     // MARK: - Quick Page Preview Helpers
-    func getPageThumbnail(pageNumber: Int, size: CGSize = CGSize(width: 220, height: 290)) -> NSImage? {
+    func getPageThumbnail(pageNumber: Int, size: CGSize = CGSize(width: 220, height: 290)) -> PlatformImage? {
         guard let doc = loadedPDFDocument, pageNumber >= 1, pageNumber <= doc.pageCount else { return nil }
         guard let page = doc.page(at: pageNumber - 1) else { return nil }
-        return page.thumbnail(of: size, for: .cropBox)
+        return page.platformThumbnail(size: size)
     }
 
     func getPageSnippet(pageNumber: Int, maxLines: Int = 4) -> String {
@@ -147,6 +147,7 @@ class AppViewModel: ObservableObject {
     }
 
     func choosePDFFile() {
+        #if os(macOS)
         let panel = NSOpenPanel()
         panel.title = "Chọn sách PDF cần tách"
         panel.allowedContentTypes = [.pdf]
@@ -157,9 +158,11 @@ class AppViewModel: ObservableObject {
         if panel.runModal() == .OK, let url = panel.url {
             loadPDF(from: url)
         }
+        #endif
     }
 
     func chooseOutputFolder() {
+        #if os(macOS)
         let panel = NSOpenPanel()
         panel.title = "Chọn thư mục lưu file xuất"
         panel.canChooseDirectories = true
@@ -172,12 +175,15 @@ class AppViewModel: ObservableObject {
             outputFolderPath = url.path
             addLog(icon: "📂", message: "Đã chọn thư mục lưu: \(url.path)")
         }
+        #endif
     }
 
     func revealInFinder() {
+        #if os(macOS)
         if let outDir = outputFolderURL {
             NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: outDir.path)
         }
+        #endif
     }
 
     func createNewFolderPrompt() {

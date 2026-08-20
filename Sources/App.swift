@@ -1,4 +1,6 @@
 import SwiftUI
+
+#if os(macOS)
 import AppKit
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -11,24 +13,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 }
+#endif
 
 @main
-struct PdfSplitterApp: App {
+struct FinderBooksApp: App {
+    #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    #endif
 
     var body: some Scene {
         WindowGroup {
             ContentView()
         }
+        #if os(macOS)
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
         .commands {
             SidebarCommands()
         }
-        .defaultSize(width: 840, height: 900)
+        .defaultSize(width: 900, height: 680)
+        #endif
         
+        #if os(macOS)
         Settings {
             AISettingsView()
         }
+        #endif
     }
 }

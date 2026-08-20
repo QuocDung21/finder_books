@@ -78,7 +78,7 @@ class BookLibraryViewModel: ObservableObject {
     private let service = BookLibraryService()
     
     // MARK: - Thumbnail Cache
-    private var thumbnailCache: [String: NSImage] = [:]
+    private var thumbnailCache: [String: PlatformImage] = [:]
     
     // MARK: - Alerts & Dialogs
     @Published var showAlert: Bool = false
@@ -193,13 +193,13 @@ class BookLibraryViewModel: ObservableObject {
     }
     
     // MARK: - Thumbnail Loader
-    func thumbnail(for book: BookItem) -> NSImage? {
+    func thumbnail(for book: BookItem) -> PlatformImage? {
         if let cached = thumbnailCache[book.id] {
             return cached
         }
         
         if let doc = PDFDocument(url: book.url), let firstPage = doc.page(at: 0) {
-            let thumb = firstPage.thumbnail(of: CGSize(width: 160, height: 210), for: .cropBox)
+            let thumb = firstPage.platformThumbnail(size: CGSize(width: 160, height: 210))
             thumbnailCache[book.id] = thumb
             return thumb
         }
@@ -208,6 +208,7 @@ class BookLibraryViewModel: ObservableObject {
     
     // MARK: - Library Navigation
     func chooseLibraryFolder() {
+        #if os(macOS)
         let panel = NSOpenPanel()
         panel.title = "Chọn thư mục chứa sách để quản lý"
         panel.canChooseDirectories = true
@@ -215,13 +216,21 @@ class BookLibraryViewModel: ObservableObject {
         panel.allowsMultipleSelection = false
         
         if panel.runModal() == .OK, let url = panel.url {
-            libraryRootURL = url
-            refreshLibrary()
-            
-            // Re-bind folder watcher if active
-            if folderWatcher.isWatching {
-                setupSmartInboxFolder()
-            }
+            setLibraryFolder(url: url)
+        }
+        #elseif os(iOS)
+        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            setLibraryFolder(url: docs)
+        }
+        #endif
+    }
+    
+    func setLibraryFolder(url: URL) {
+        libraryRootURL = url
+        refreshLibrary()
+        
+        if folderWatcher.isWatching {
+            setupSmartInboxFolder()
         }
     }
     

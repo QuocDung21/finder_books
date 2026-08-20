@@ -138,7 +138,7 @@ struct BookSplitterView: View {
         Group {
             if let thumb = vm.thumbnailImage {
                 HStack(spacing: 16) {
-                    Image(nsImage: thumb)
+                    Image(platformImage: thumb)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 75, height: 95)

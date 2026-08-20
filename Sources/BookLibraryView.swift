@@ -198,7 +198,7 @@ struct BookLibraryView: View {
                         .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 3)
                     
                     if let thumb = vm.thumbnail(for: book) {
-                        Image(nsImage: thumb)
+                        Image(platformImage: thumb)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -329,7 +329,7 @@ struct BookLibraryView: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(Color.white)
                 if let thumb = vm.thumbnail(for: book) {
-                    Image(nsImage: thumb)
+                    Image(platformImage: thumb)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
