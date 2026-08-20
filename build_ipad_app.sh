@@ -4,7 +4,7 @@ set -e
 DEVICE_NAME="iPad mini (A17 Pro)"
 DEVICE_ID="CC8638E2-3C48-4E37-9ED2-D12B20313486"
 BUNDLE_ID="com.quocdung.finderbooks"
-APP_NAME="FinderBooks"
+EXEC_NAME="PdfSplitter"
 
 echo "========================================================="
 echo "📱 Bắt đầu Build & Khởi chạy ứng dụng lên $DEVICE_NAME..."
@@ -18,35 +18,26 @@ xcodebuild -scheme PdfSplitter \
   -derivedDataPath .build/DerivedData \
   build
 
-APP_PATH=$(find .build/DerivedData -name "PdfSplitter.app" -type d | head -n 1)
+BINARY_PATH=$(find .build/DerivedData/Build/Products/Debug-iphonesimulator -name "$EXEC_NAME" -type f -perm +111 | head -n 1)
 
-if [ -z "$APP_PATH" ]; then
-    # Fallback to products directory
-    APP_PATH=$(find .build/DerivedData -name "PdfSplitter" -type f -perm +111 | head -n 1)
+if [ -z "$BINARY_PATH" ]; then
+    echo "❌ Không tìm thấy file binary sau khi build!"
+    exit 1
 fi
 
-echo "📦 Đã tìm thấy binary tại: $APP_PATH"
+echo "📦 Đã tìm thấy binary tại: $BINARY_PATH"
 
-# 2. Boot iPad Simulator
-echo "📲 Đang khởi động $DEVICE_NAME Simulator..."
-xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
-open -a Simulator
-
-# 3. Install & Launch
-echo "🚀 Đang cài đặt và mở ứng dụng trên $DEVICE_NAME..."
-# If it's a raw binary inside SPM derived data, create a proper .app wrapper
-IPAD_APP_DIR=".build/FinderBooks-iPad.app"
+# 2. Package proper iOS .app Bundle
+IPAD_APP_DIR=".build/FinderBooks.app"
 rm -rf "$IPAD_APP_DIR"
 mkdir -p "$IPAD_APP_DIR"
 
-if [ -d "$APP_PATH" ]; then
-    cp -R "$APP_PATH/"* "$IPAD_APP_DIR/"
-else
-    cp "$APP_PATH" "$IPAD_APP_DIR/$APP_NAME"
-fi
+# Copy binary to matching executable name
+cp "$BINARY_PATH" "$IPAD_APP_DIR/$EXEC_NAME"
+chmod +x "$IPAD_APP_DIR/$EXEC_NAME"
 
 # Create Info.plist for iPadOS
-cat << 'EOF' > "$IPAD_APP_DIR/Info.plist"
+cat << EOF > "$IPAD_APP_DIR/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -54,12 +45,14 @@ cat << 'EOF' > "$IPAD_APP_DIR/Info.plist"
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>PdfSplitter</string>
+    <string>$EXEC_NAME</string>
     <key>CFBundleIdentifier</key>
-    <string>com.quocdung.finderbooks</string>
+    <string>$BUNDLE_ID</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
+    <string>Finder Books</string>
+    <key>CFBundleDisplayName</key>
     <string>Finder Books</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
@@ -92,8 +85,20 @@ cat << 'EOF' > "$IPAD_APP_DIR/Info.plist"
 </plist>
 EOF
 
-xcrun simctl install "$DEVICE_ID" "$IPAD_APP_DIR" 2>/dev/null || true
-xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID" 2>/dev/null || true
+# Codesign the app bundle for Simulator
+echo "🔏 Đang ký số ứng dụng iPad..."
+codesign --force --sign - --timestamp=none "$IPAD_APP_DIR"
+
+# 3. Boot iPad Simulator
+echo "📲 Đang khởi động $DEVICE_NAME Simulator..."
+xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
+open -a Simulator
+
+# 4. Uninstall old version & Install Fresh
+echo "🚀 Đang cài đặt và mở ứng dụng trên $DEVICE_NAME..."
+xcrun simctl uninstall "$DEVICE_ID" "$BUNDLE_ID" 2>/dev/null || true
+xcrun simctl install "$DEVICE_ID" "$IPAD_APP_DIR"
+xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
 
 echo "========================================================="
 echo "🎉 THÀNH CÔNG! Đã khởi chạy Finder Books lên $DEVICE_NAME!"
