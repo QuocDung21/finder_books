@@ -250,68 +250,181 @@ final class AIBookClassificationService {
         }.value
     }
     
-    // MARK: - AI Smart Title Suggestions
+    // MARK: - AI Smart Title Suggestions (Deep Cover & Content Analysis)
     func extractTitleSuggestions(for pdfURL: URL) async -> [String] {
         return await Task.detached {
             var suggestions: [String] = []
             guard let doc = PDFDocument(url: pdfURL) else { return [] }
             
-            // 1. Metadata Extraction
+            // PRIORITY 1: Deep Vision Layout Analysis on Book Cover (Page 0)
+            let coverAnalysis = await self.analyzeCoverVisualLayout(doc: doc)
+            
+            if let mainTitle = coverAnalysis.mainTitle, !mainTitle.isEmpty {
+                suggestions.append(mainTitle)
+                
+                if let author = coverAnalysis.author, !author.isEmpty {
+                    suggestions.append("\(mainTitle) - \(author)")
+                } else if let subtitle = coverAnalysis.subtitle, !subtitle.isEmpty {
+                    suggestions.append("\(mainTitle): \(subtitle)")
+                }
+            }
+            
+            // PRIORITY 2: First 3 Pages Content Analysis (Title Page & Heading)
+            let contentTitles = self.extractTitlesFromFirstPagesContent(doc: doc)
+            for t in contentTitles {
+                if !suggestions.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+                    suggestions.append(t)
+                }
+            }
+            
+            // PRIORITY 3: Metadata Fallback (Secondary)
             let metaTitle = (doc.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             let metaAuthor = (doc.documentAttributes?[PDFDocumentAttribute.authorAttribute] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             
             if let title = metaTitle, title.count > 2 && title.count < 100 && !title.lowercased().contains("untitled") {
                 let cleanMeta = self.cleanTitleString(title)
-                if !cleanMeta.isEmpty {
+                if !cleanMeta.isEmpty && !suggestions.contains(where: { $0.caseInsensitiveCompare(cleanMeta) == .orderedSame }) {
                     suggestions.append(cleanMeta)
                     if let author = metaAuthor, author.count > 2 && author.count < 60 {
-                        suggestions.append("\(cleanMeta) - \(self.cleanTitleString(author))")
+                        let combined = "\(cleanMeta) - \(self.cleanTitleString(author))"
+                        if !suggestions.contains(where: { $0.caseInsensitiveCompare(combined) == .orderedSame }) {
+                            suggestions.append(combined)
+                        }
                     }
                 }
             }
             
-            // 2. Cleaned Current Filename
+            // PRIORITY 4: Cleaned Filename Fallback
             let currentBase = pdfURL.deletingPathExtension().lastPathComponent
             let cleanedBase = self.cleanFilename(currentBase)
             if !cleanedBase.isEmpty && !suggestions.contains(where: { $0.caseInsensitiveCompare(cleanedBase) == .orderedSame }) {
                 suggestions.append(cleanedBase)
             }
             
-            // 3. Extract text from Page 1 (Cover / Title Page)
-            var coverLines: [String] = []
-            if let page1 = doc.page(at: 0) {
-                var p1Text = page1.string ?? ""
-                if p1Text.trimmingCharacters(in: .whitespacesAndNewlines).count < 30 {
-                    // Fallback to OCR on first page
-                    let ocrResult = await self.performOCR(on: page1)
-                    p1Text = ocrResult
-                }
-                
-                let rawLines = p1Text.components(separatedBy: .newlines)
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { $0.count >= 3 && $0.count <= 80 }
-                
-                for line in rawLines {
-                    let lower = line.lowercased()
-                    // Filter out copyright, date, page number lines
-                    if lower.contains("copyright") || lower.contains("all rights") || lower.contains("isbn") || lower.contains("published") || lower.contains("trang ") || lower.contains("edition") {
-                        continue
-                    }
-                    coverLines.append(self.cleanTitleString(line))
-                    if coverLines.count >= 3 { break }
-                }
-            }
-            
-            for line in coverLines {
-                if !suggestions.contains(where: { $0.caseInsensitiveCompare(line) == .orderedSame }) {
-                    suggestions.append(line)
-                }
-            }
-            
             // Deduplicate and filter out empty / too short
             let result = suggestions.filter { $0.count >= 3 }
             return Array(result.prefix(4))
         }.value
+    }
+    
+    // MARK: - Analyze Cover Visual Layout (Largest text & Spatial positioning)
+    private struct VisualCoverResult {
+        var mainTitle: String?
+        var subtitle: String?
+        var author: String?
+    }
+    
+    private func analyzeCoverVisualLayout(doc: PDFDocument) async -> VisualCoverResult {
+        guard let coverPage = doc.page(at: 0) else { return VisualCoverResult() }
+        
+        let thumb = coverPage.thumbnail(of: CGSize(width: 900, height: 1200), for: .cropBox)
+        guard let cgImage = thumb.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return VisualCoverResult()
+        }
+        
+        struct TextElement {
+            let text: String
+            let box: CGRect // normalized [0, 1] with bottom-left origin
+            let height: CGFloat
+            let area: CGFloat
+        }
+        
+        return await withCheckedContinuation { continuation in
+            let request = VNRecognizeTextRequest { req, error in
+                guard error == nil, let results = req.results as? [VNRecognizedTextObservation] else {
+                    continuation.resume(returning: VisualCoverResult())
+                    return
+                }
+                
+                var elements: [TextElement] = []
+                for obs in results {
+                    if let top = obs.topCandidates(1).first {
+                        let str = top.string.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard str.count >= 2 else { continue }
+                        let box = obs.boundingBox
+                        elements.append(TextElement(
+                            text: str,
+                            box: box,
+                            height: box.height,
+                            area: box.width * box.height
+                        ))
+                    }
+                }
+                
+                // Filter out noise (very top status bar, very bottom copyright)
+                let centralElements = elements.filter { el in
+                    let lower = el.text.lowercased()
+                    let isNoise = lower.contains("copyright") || lower.contains("isbn") || lower.contains("nxb ") || lower.contains("nhà xuất bản")
+                    return !isNoise && el.box.origin.y >= 0.12 && el.box.origin.y <= 0.90
+                }
+                
+                // Sort by font height (largest text on cover is almost always the title)
+                let sortedByHeight = centralElements.sorted { $0.height > $1.height }
+                
+                guard let topElement = sortedByHeight.first else {
+                    continuation.resume(returning: VisualCoverResult())
+                    return
+                }
+                
+                // Find sibling lines that belong to the same large title block (similar font height within 25% and close Y)
+                let maxH = topElement.height
+                let titleLines = centralElements.filter { el in
+                    let heightRatio = el.height / maxH
+                    return heightRatio >= 0.65 && abs(el.box.origin.y - topElement.box.origin.y) <= 0.35
+                }.sorted { $0.box.origin.y > $1.box.origin.y } // Top to bottom
+                
+                let titleString = titleLines.map { $0.text }.joined(separator: " ")
+                let cleanTitle = self.cleanTitleString(titleString)
+                
+                // Detect author (smaller text, often contains "tác giả", "by", or positioned near top/bottom)
+                var detectedAuthor: String? = nil
+                for el in centralElements where !titleLines.contains(where: { $0.text == el.text }) {
+                    let lower = el.text.lowercased()
+                    if lower.contains("tác giả:") || lower.contains("by ") || lower.contains("written by") {
+                        detectedAuthor = self.cleanTitleString(el.text.replacingOccurrences(of: "(?i)tác giả:|by |written by", with: "", options: .regularExpression))
+                        break
+                    }
+                }
+                
+                continuation.resume(returning: VisualCoverResult(
+                    mainTitle: cleanTitle.isEmpty ? nil : cleanTitle,
+                    subtitle: nil,
+                    author: detectedAuthor
+                ))
+            }
+            
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = true
+            request.recognitionLanguages = ["vi-VN", "en-US"]
+            
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            try? handler.perform([request])
+        }
+    }
+    
+    // MARK: - Extract Titles from First 3 Pages Content
+    private func extractTitlesFromFirstPagesContent(doc: PDFDocument) -> [String] {
+        var results: [String] = []
+        let maxPages = min(3, doc.pageCount)
+        
+        for i in 0..<maxPages {
+            guard let page = doc.page(at: i), let text = page.string else { continue }
+            let lines = text.components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { $0.count >= 4 && $0.count <= 70 }
+            
+            for line in lines {
+                let lower = line.lowercased()
+                if lower.contains("chương ") || lower.contains("chapter ") || lower.contains("lời nói đầu") || lower.contains("mục lục") {
+                    continue
+                }
+                if lower.contains("tên sách:") || lower.contains("title:") {
+                    let cleaned = self.cleanTitleString(line.replacingOccurrences(of: "(?i)tên sách:|title:", with: "", options: .regularExpression))
+                    if !cleaned.isEmpty { results.append(cleaned) }
+                }
+            }
+        }
+        return results
     }
     
     private func cleanFilename(_ filename: String) -> String {
