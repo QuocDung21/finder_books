@@ -26,5 +26,9 @@ struct PdfSplitterApp: App {
             SidebarCommands()
         }
         .defaultSize(width: 840, height: 900)
+        
+        Settings {
+            AISettingsView()
+        }
     }
 }

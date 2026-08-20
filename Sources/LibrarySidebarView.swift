@@ -3,6 +3,7 @@ import SwiftUI
 struct LibrarySidebarView: View {
     @ObservedObject var vm: BookLibraryViewModel
     var onOpenSplitter: () -> Void
+    var onOpenSettings: () -> Void
     
     var body: some View {
         List(selection: $vm.selectedSidebarItem) {
@@ -95,6 +96,14 @@ struct LibrarySidebarView: View {
                     vm.promptScanAndSyncSourceFolder()
                 } label: {
                     Label("Quét & Đồng Bộ...", systemImage: "arrow.triangle.2.circlepath")
+                        .foregroundColor(.primary)
+                }
+                .buttonStyle(.plain)
+                
+                Button {
+                    onOpenSettings()
+                } label: {
+                    Label("Cài Đặt Model AI...", systemImage: "cpu")
                         .foregroundColor(.primary)
                 }
                 .buttonStyle(.plain)

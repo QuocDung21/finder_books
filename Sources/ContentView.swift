@@ -8,6 +8,7 @@ struct ContentView: View {
     
     @State private var readingBookURL: URL? = nil
     @State private var showSplitterModal: Bool = false
+    @State private var showAISettingsModal: Bool = false
     
     var body: some View {
         Group {
@@ -31,9 +32,15 @@ struct ContentView: View {
             } else {
                 // Unified Modern NavigationSplitView
                 NavigationSplitView {
-                    LibrarySidebarView(vm: libraryVM) {
-                        showSplitterModal = true
-                    }
+                    LibrarySidebarView(
+                        vm: libraryVM,
+                        onOpenSplitter: {
+                            showSplitterModal = true
+                        },
+                        onOpenSettings: {
+                            showAISettingsModal = true
+                        }
+                    )
                 } detail: {
                     BookLibraryView(
                         vm: libraryVM,
@@ -142,6 +149,13 @@ struct ContentView: View {
                         
                         Divider()
                         
+                        Button {
+                            showAISettingsModal = true
+                        } label: {
+                            Label("Cài Đặt Model AI...", systemImage: "cpu")
+                        }
+                        .keyboardShortcut(",", modifiers: .command)
+                        
                         if let rootDir = libraryVM.libraryRootURL {
                             Button {
                                 NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: rootDir.path)
@@ -185,6 +199,9 @@ struct ContentView: View {
                 }
             )
             .frame(minWidth: 860, minHeight: 650)
+        }
+        .sheet(isPresented: $showAISettingsModal) {
+            AISettingsView()
         }
     }
 }
