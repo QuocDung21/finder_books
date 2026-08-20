@@ -99,6 +99,11 @@ struct BookLibraryView: View {
                 )
             }
         }
+        .sheet(item: $vm.bookToRename) { book in
+            BookRenameSheet(book: book) { newTitle in
+                vm.renameBookAction(book: book, newTitle: newTitle)
+            }
+        }
     }
     
     // MARK: - Clean Header Banner
@@ -289,9 +294,13 @@ struct BookLibraryView: View {
                 onSelectBookToSplit(book.url)
             }
             Divider()
+            Button("Đổi Tên Sách...") {
+                vm.bookToRename = book
+            }
             Button("Hiện Trong Finder") {
                 vm.revealInFinder(book: book)
             }
+            Divider()
             Button(role: .destructive) {
                 try? BookLibraryService().deleteBook(at: book.url)
                 vm.refreshLibrary()
@@ -370,6 +379,28 @@ struct BookLibraryView: View {
         .padding(.vertical, 7)
         .background(isSelected ? Color.accentColor.opacity(0.08) : Color.clear)
         .cornerRadius(6)
+        .contextMenu {
+            Button("Đọc Sách") {
+                onSelectBookToRead(book.url)
+            }
+            Button("Tách Sách Này...") {
+                onSelectBookToSplit(book.url)
+            }
+            Divider()
+            Button("Đổi Tên Sách...") {
+                vm.bookToRename = book
+            }
+            Button("Hiện Trong Finder") {
+                vm.revealInFinder(book: book)
+            }
+            Divider()
+            Button(role: .destructive) {
+                try? BookLibraryService().deleteBook(at: book.url)
+                vm.refreshLibrary()
+            } label: {
+                Label("Chuyển vào Thùng Rác", systemImage: "trash")
+            }
+        }
     }
     
     // MARK: - Empty Library View

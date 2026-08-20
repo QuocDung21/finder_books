@@ -69,6 +69,9 @@ class BookLibraryViewModel: ObservableObject {
     @Published var syncSourceFolderURL: URL? = nil
     @Published var showSyncSheet: Bool = false
     
+    // MARK: - Rename Book State
+    @Published var bookToRename: BookItem? = nil
+    
     let folderWatcher = FolderWatcherService()
     private let aiClassifier = AIBookClassificationService()
     private let syncService = BookSyncService()
@@ -453,6 +456,16 @@ class BookLibraryViewModel: ObservableObject {
                     self.showSyncSheet = true
                 }
             }
+        }
+    }
+    
+    // MARK: - Rename Book Action
+    func renameBookAction(book: BookItem, newTitle: String) {
+        do {
+            _ = try service.renameBook(at: book.url, to: newTitle)
+            refreshLibrary()
+        } catch {
+            showAlert(title: "Lỗi Đổi Tên", message: error.localizedDescription)
         }
     }
     

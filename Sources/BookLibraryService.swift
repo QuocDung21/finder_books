@@ -123,4 +123,17 @@ struct BookLibraryService {
     func deleteBook(at url: URL) throws {
         try FileManager.default.trashItem(at: url, resultingItemURL: nil)
     }
+    
+    // MARK: - Rename Book File
+    func renameBook(at url: URL, to newName: String) throws -> URL {
+        var cleanName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanName.lowercased().hasSuffix(".pdf") {
+            cleanName += ".pdf"
+        }
+        let destURL = url.deletingLastPathComponent().appendingPathComponent(cleanName)
+        if destURL.path != url.path {
+            try FileManager.default.moveItem(at: url, to: destURL)
+        }
+        return destURL
+    }
 }

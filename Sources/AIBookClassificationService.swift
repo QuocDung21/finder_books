@@ -249,4 +249,90 @@ final class AIBookClassificationService {
             return recognizedStrings.joined(separator: " ")
         }.value
     }
+    
+    // MARK: - AI Smart Title Suggestions
+    func extractTitleSuggestions(for pdfURL: URL) async -> [String] {
+        return await Task.detached {
+            var suggestions: [String] = []
+            guard let doc = PDFDocument(url: pdfURL) else { return [] }
+            
+            // 1. Metadata Extraction
+            let metaTitle = (doc.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let metaAuthor = (doc.documentAttributes?[PDFDocumentAttribute.authorAttribute] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            if let title = metaTitle, title.count > 2 && title.count < 100 && !title.lowercased().contains("untitled") {
+                let cleanMeta = self.cleanTitleString(title)
+                if !cleanMeta.isEmpty {
+                    suggestions.append(cleanMeta)
+                    if let author = metaAuthor, author.count > 2 && author.count < 60 {
+                        suggestions.append("\(cleanMeta) - \(self.cleanTitleString(author))")
+                    }
+                }
+            }
+            
+            // 2. Cleaned Current Filename
+            let currentBase = pdfURL.deletingPathExtension().lastPathComponent
+            let cleanedBase = self.cleanFilename(currentBase)
+            if !cleanedBase.isEmpty && !suggestions.contains(where: { $0.caseInsensitiveCompare(cleanedBase) == .orderedSame }) {
+                suggestions.append(cleanedBase)
+            }
+            
+            // 3. Extract text from Page 1 (Cover / Title Page)
+            var coverLines: [String] = []
+            if let page1 = doc.page(at: 0) {
+                var p1Text = page1.string ?? ""
+                if p1Text.trimmingCharacters(in: .whitespacesAndNewlines).count < 30 {
+                    // Fallback to OCR on first page
+                    let ocrResult = await self.performOCR(on: page1)
+                    p1Text = ocrResult
+                }
+                
+                let rawLines = p1Text.components(separatedBy: .newlines)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { $0.count >= 3 && $0.count <= 80 }
+                
+                for line in rawLines {
+                    let lower = line.lowercased()
+                    // Filter out copyright, date, page number lines
+                    if lower.contains("copyright") || lower.contains("all rights") || lower.contains("isbn") || lower.contains("published") || lower.contains("trang ") || lower.contains("edition") {
+                        continue
+                    }
+                    coverLines.append(self.cleanTitleString(line))
+                    if coverLines.count >= 3 { break }
+                }
+            }
+            
+            for line in coverLines {
+                if !suggestions.contains(where: { $0.caseInsensitiveCompare(line) == .orderedSame }) {
+                    suggestions.append(line)
+                }
+            }
+            
+            // Deduplicate and filter out empty / too short
+            let result = suggestions.filter { $0.count >= 3 }
+            return Array(result.prefix(4))
+        }.value
+    }
+    
+    private func cleanFilename(_ filename: String) -> String {
+        var str = filename
+        // Remove common web tags
+        let noisePatterns = [
+            "\\[z-lib\\.org\\]", "\\[z-library\\]", "\\(PDFDrive\\)", "\\(z-lib\\.org\\)",
+            "\\(PDFDrive\\.com\\)", "_part\\d+", "v\\d+\\.\\d+", "\\.pdf$", "^\\d+[\\s_.-]+"
+        ]
+        for pattern in noisePatterns {
+            str = str.replacingOccurrences(of: pattern, with: "", options: [.regularExpression, .caseInsensitive])
+        }
+        str = str.replacingOccurrences(of: "_", with: " ")
+        str = str.replacingOccurrences(of: "  ", with: " ")
+        return cleanTitleString(str)
+    }
+    
+    private func cleanTitleString(_ title: String) -> String {
+        var clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".-_~*#[](){}"))
+        clean = clean.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return clean
+    }
 }
