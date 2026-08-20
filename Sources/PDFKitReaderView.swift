@@ -12,6 +12,7 @@ struct PDFKitReaderView: NSViewRepresentable {
     
     func makeNSView(context: Context) -> PDFView {
         let pdfView = PDFView()
+        pdfView.autoresizingMask = [.width, .height]
         pdfView.autoScales = autoScales
         pdfView.displayMode = displayMode
         pdfView.displayDirection = .vertical
@@ -47,10 +48,15 @@ struct PDFKitReaderView: NSViewRepresentable {
             }
         }
         
-        pdfView.displayMode = displayMode
-        pdfView.autoScales = autoScales
+        if pdfView.displayMode != displayMode {
+            pdfView.displayMode = displayMode
+        }
         
-        if !autoScales && scaleFactor > 0 {
+        if pdfView.autoScales != autoScales {
+            pdfView.autoScales = autoScales
+        }
+        
+        if !autoScales && scaleFactor > 0 && abs(pdfView.scaleFactor - scaleFactor) > 0.05 {
             pdfView.scaleFactor = scaleFactor
         }
         
@@ -93,26 +99,4 @@ struct PDFKitReaderView: NSViewRepresentable {
             NotificationCenter.default.removeObserver(self)
         }
     }
-}
-
-// MARK: - PDF Thumbnail View Representable
-struct PDFKitThumbnailRepresentedView: NSViewRepresentable {
-    let pdfURL: URL
-    var onSelectPage: ((Int) -> Void)? = nil
-    
-    func makeNSView(context: Context) -> PDFThumbnailView {
-        let thumbView = PDFThumbnailView()
-        thumbView.thumbnailSize = CGSize(width: 100, height: 140)
-        thumbView.backgroundColor = NSColor.controlBackgroundColor
-        
-        if let doc = PDFDocument(url: pdfURL) {
-            let pdfView = PDFView()
-            pdfView.document = doc
-            thumbView.pdfView = pdfView
-        }
-        
-        return thumbView
-    }
-    
-    func updateNSView(_ nsView: PDFThumbnailView, context: Context) {}
 }
