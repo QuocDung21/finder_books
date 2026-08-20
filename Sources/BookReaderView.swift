@@ -18,6 +18,7 @@ struct BookReaderView: View {
     @State private var showLookupSheet: Bool = false
     @State private var lookupQueryText: String = ""
     @State private var showNotebookSheet: Bool = false
+    @State private var isDictionaryPinned: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,7 +31,7 @@ struct BookReaderView: View {
             GeometryReader { geo in
                 ZStack(alignment: .bottomTrailing) {
                     HStack(spacing: 0) {
-                        // Optional Thumbnails Drawer
+                        // Left: Optional Thumbnails Drawer
                         if showThumbnailSidebar {
                             thumbnailsDrawer
                                 .frame(width: 140)
@@ -39,7 +40,7 @@ struct BookReaderView: View {
                             Divider()
                         }
 
-                        // PDF Canvas (Takes full remaining space)
+                        // Center: PDF Canvas (Takes full flexible space)
                         PDFKitReaderView(
                             url: bookURL,
                             currentPageIndex: $currentPageIndex,
@@ -50,10 +51,32 @@ struct BookReaderView: View {
                             selectedText: $selectedText
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                        // Right: Pinned AI Dictionary & Translation Side Panel
+                        if isDictionaryPinned {
+                            Divider()
+                            
+                            AIDictionarySidePanel(
+                                queryText: $lookupQueryText,
+                                bookTitle: bookURL.deletingPathExtension().lastPathComponent,
+                                onUnpinToModal: {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        isDictionaryPinned = false
+                                        showLookupSheet = true
+                                    }
+                                },
+                                onClose: {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        isDictionaryPinned = false
+                                    }
+                                }
+                            )
+                            .transition(.move(edge: .trailing))
+                        }
                     }
                     
-                    // Floating Quick Lookup Button when text is selected
-                    if !selectedText.isEmpty {
+                    // Floating Quick Lookup Button when text is selected (only if side panel not pinned)
+                    if !selectedText.isEmpty && !isDictionaryPinned {
                         Button {
                             lookupQueryText = selectedText
                             showLookupSheet = true
@@ -78,10 +101,20 @@ struct BookReaderView: View {
             }
         }
         .background(Color.platformWindowBackground)
+        .onChange(of: selectedText) { newText in
+            if isDictionaryPinned && !newText.isEmpty {
+                lookupQueryText = newText
+            }
+        }
         .sheet(isPresented: $showLookupSheet) {
             AITranslateLookupSheet(
-                queryText: lookupQueryText,
-                bookTitle: bookURL.deletingPathExtension().lastPathComponent
+                queryText: lookupQueryText.isEmpty ? "Reading" : lookupQueryText,
+                bookTitle: bookURL.deletingPathExtension().lastPathComponent,
+                onPinToSidebar: {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isDictionaryPinned = true
+                    }
+                }
             )
         }
         .sheet(isPresented: $showNotebookSheet) {
@@ -110,7 +143,7 @@ struct BookReaderView: View {
                     .font(.system(size: 12, weight: .bold))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .frame(maxWidth: 200, alignment: .leading)
+                    .frame(maxWidth: 180, alignment: .leading)
             }
 
             Spacer()
@@ -154,17 +187,29 @@ struct BookReaderView: View {
 
             // Right Group: Controls
             HStack(spacing: 6) {
-                // AI Lookup & Translate Shortcut
+                // Pin / Dock AI Dictionary Side Panel
                 Button {
-                    lookupQueryText = selectedText.isEmpty ? "Reading" : selectedText
-                    showLookupSheet = true
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isDictionaryPinned.toggle()
+                        if isDictionaryPinned && lookupQueryText.isEmpty {
+                            lookupQueryText = selectedText.isEmpty ? "Reading" : selectedText
+                        }
+                    }
                 } label: {
-                    Image(systemName: "character.book.closed")
+                    HStack(spacing: 3) {
+                        Image(systemName: isDictionaryPinned ? "sidebar.right" : "character.book.closed")
+                        if isDictionaryPinned {
+                            Text("Đang Ghim")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                    }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .tint(isDictionaryPinned ? Color.accentColor : Color.secondary.opacity(0.18))
+                .foregroundColor(isDictionaryPinned ? .white : .primary)
                 .controlSize(.small)
+                .help("Ghim cột Tra cứu & Dịch AI kế bên sách (⌘D)")
                 .keyboardShortcut("d", modifiers: .command)
-                .help("Dịch và Tra từ điển AI (⌘D)")
                 
                 // Vocabulary Notebook
                 Button {
