@@ -67,8 +67,9 @@ enum LibrarySortOption: String, CaseIterable, Identifiable {
 
 enum LibraryGroupMode: String, CaseIterable, Identifiable {
     case none = "Không Gom"
-    case byFolder = "Theo Thư Mục Con"
-    case bySeries = "Theo Bộ / Tiền Tố"
+    case byCategory = "🤖 Theo Thể Loại AI"
+    case byFolder = "📁 Theo Thư Mục Con"
+    case bySeries = "📚 Theo Bộ / Tiền Tố"
     
     var id: String { rawValue }
 }

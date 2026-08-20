@@ -14,7 +14,16 @@ class BookLibraryViewModel: ObservableObject {
     @Published var searchText: String = ""
     @Published var viewMode: LibraryViewMode = .grid
     @Published var sortOption: LibrarySortOption = .name
-    @Published var groupMode: LibraryGroupMode = .byFolder
+    @Published var groupMode: LibraryGroupMode = .byCategory
+    
+    // MARK: - AI & Smart Watcher State
+    @Published var isAIOrganizing: Bool = false
+    @Published var aiProgressText: String = ""
+    @Published var bookCategories: [String: BookCategory] = [:] // Book ID -> Detected Category
+    
+    let folderWatcher = FolderWatcherService()
+    private let aiClassifier = AIBookClassificationService()
+    private let service = BookLibraryService()
     
     // MARK: - Thumbnail Cache
     private var thumbnailCache: [String: NSImage] = [:]
@@ -24,12 +33,14 @@ class BookLibraryViewModel: ObservableObject {
     @Published var alertTitle: String = ""
     @Published var alertMessage: String = ""
     
-    private let service = BookLibraryService()
-    
     init() {
-        // Default to ~/Documents or current working folder
         let defaultURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
         libraryRootURL = defaultURL
+        
+        folderWatcher.onBookOrganized = { [weak self] in
+            self?.refreshLibrary()
+        }
+        
         refreshLibrary()
     }
     
@@ -63,6 +74,26 @@ class BookLibraryViewModel: ObservableObject {
         case .none:
             return [BookGroup(id: "all", title: "Tất Cả Sách (\(items.count))", folderURL: libraryRootURL, books: items)]
             
+        case .byCategory:
+            let dict = Dictionary(grouping: items) { book -> BookCategory in
+                // Check if folder is already a known category folder
+                let folder = book.folderName
+                for cat in BookCategory.allCases {
+                    if folder == cat.rawValue || folder == cat.folderName || folder.contains(cat.rawValue) {
+                        return cat
+                    }
+                }
+                return bookCategories[book.id] ?? .general
+            }
+            return dict.map { (category, groupBooks) in
+                BookGroup(
+                    id: category.rawValue,
+                    title: "\(category.rawValue) (\(groupBooks.count) cuốn)",
+                    folderURL: groupBooks.first?.folderURL,
+                    books: groupBooks
+                )
+            }.sorted { $0.title < $1.title }
+            
         case .byFolder:
             let dict = Dictionary(grouping: items) { $0.folderURL }
             return dict.map { (folderURL, groupBooks) in
@@ -72,7 +103,6 @@ class BookLibraryViewModel: ObservableObject {
             
         case .bySeries:
             let dict = Dictionary(grouping: items) { book -> String in
-                // Extract common series prefix
                 let base = book.baseName
                 if let range = base.range(of: "_part\\d+", options: .regularExpression) {
                     return String(base[..<range.lowerBound])
@@ -94,7 +124,6 @@ class BookLibraryViewModel: ObservableObject {
             return cached
         }
         
-        // Generate on demand
         if let doc = PDFDocument(url: book.url), let firstPage = doc.page(at: 0) {
             let thumb = firstPage.thumbnail(of: CGSize(width: 160, height: 210), for: .cropBox)
             thumbnailCache[book.id] = thumb
@@ -103,7 +132,7 @@ class BookLibraryViewModel: ObservableObject {
         return nil
     }
     
-    // MARK: - Actions
+    // MARK: - Library Navigation
     func chooseLibraryFolder() {
         let panel = NSOpenPanel()
         panel.title = "Chọn thư mục chứa sách để quản lý"
@@ -114,6 +143,11 @@ class BookLibraryViewModel: ObservableObject {
         if panel.runModal() == .OK, let url = panel.url {
             libraryRootURL = url
             refreshLibrary()
+            
+            // Re-bind folder watcher if active
+            if folderWatcher.isWatching {
+                setupSmartInboxFolder()
+            }
         }
     }
     
@@ -127,9 +161,104 @@ class BookLibraryViewModel: ObservableObject {
             let scanned = await service.scanDirectory(at: rootURL, recursive: true)
             self.books = scanned
             self.isLoading = false
+            
+            // Background classify metadata for display
+            self.preClassifyBooksInMemory(scanned)
         }
     }
     
+    private func preClassifyBooksInMemory(_ items: [BookItem]) {
+        Task.detached { [weak self] in
+            guard let self = self else { return }
+            for book in items {
+                let res = await self.aiClassifier.classifyBook(at: book.url)
+                Task { @MainActor in
+                    self.bookCategories[book.id] = res.category
+                }
+            }
+        }
+    }
+    
+    // MARK: - Smart Inbox Watcher Setup
+    func setupSmartInboxFolder() {
+        guard let root = libraryRootURL else { return }
+        let inboxURL = root.appendingPathComponent("📥_Inbox_Gom_Sach", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: inboxURL.path) {
+            try? FileManager.default.createDirectory(at: inboxURL, withIntermediateDirectories: true)
+        }
+        folderWatcher.startWatching(folderURL: inboxURL, libraryTargetDir: root)
+        showAlert(
+            title: "🤖 Đã Bật Hộp Thư Gom Sách Tự Động",
+            message: "Thư mục Hộp Thư Đến đã được tạo tại:\n👉 \"\(inboxURL.path)\"\n\nBất cứ khi nào bạn ném file PDF vào thư mục này, AI sẽ tự động phân loại và gom vào thư mục thể loại tương ứng!"
+        )
+    }
+    
+    func toggleSmartInboxWatcher() {
+        if folderWatcher.isWatching {
+            folderWatcher.stopWatching()
+            showAlert(title: "Đã Tắt Giám Sát", message: "Đã tắt tính năng tự động phân loại khi ném file vào thư mục.")
+        } else {
+            setupSmartInboxFolder()
+        }
+    }
+    
+    // MARK: - AI Batch Classification & Auto Move
+    func classifyAndOrganizeSelectedBooks() {
+        guard !selectedBookIDs.isEmpty else {
+            showAlert(title: "Chưa chọn sách", message: "Vui lòng chọn ít nhất một cuốn sách để AI phân loại.")
+            return
+        }
+        
+        let targetItems = books.filter { selectedBookIDs.contains($0.id) }
+        performAIBatchOrganize(items: targetItems)
+    }
+    
+    func classifyAndOrganizeAllBooks() {
+        guard !books.isEmpty else { return }
+        performAIBatchOrganize(items: books)
+    }
+    
+    private func performAIBatchOrganize(items: [BookItem]) {
+        guard let root = libraryRootURL else { return }
+        isAIOrganizing = true
+        aiProgressText = "Khởi động AI..."
+        
+        Task {
+            var organizedCount = 0
+            for (idx, book) in items.enumerated() {
+                self.aiProgressText = "Đang phân tích (\(idx + 1)/\(items.count)): \(book.name)"
+                
+                let res = await self.aiClassifier.classifyBook(at: book.url)
+                let targetCategoryDir = root.appendingPathComponent(res.category.rawValue, isDirectory: true)
+                
+                do {
+                    if !FileManager.default.fileExists(atPath: targetCategoryDir.path) {
+                        try FileManager.default.createDirectory(at: targetCategoryDir, withIntermediateDirectories: true)
+                    }
+                    
+                    let destURL = targetCategoryDir.appendingPathComponent(book.name)
+                    if destURL.path != book.url.path {
+                        if FileManager.default.fileExists(atPath: destURL.path) {
+                            try FileManager.default.removeItem(at: destURL)
+                        }
+                        try FileManager.default.moveItem(at: book.url, to: destURL)
+                        organizedCount += 1
+                    }
+                } catch {
+                    print("Lỗi di chuyển: \(error.localizedDescription)")
+                }
+            }
+            
+            self.isAIOrganizing = false
+            self.refreshLibrary()
+            self.showAlert(
+                title: "🎉 AI Phân Loại Hoàn Tất",
+                message: "Đã tự động phân loại và gom \(organizedCount) cuốn sách vào các thư mục thể loại tương ứng!"
+            )
+        }
+    }
+    
+    // MARK: - Selection Actions
     func toggleSelection(for bookID: String) {
         if selectedBookIDs.contains(bookID) {
             selectedBookIDs.remove(bookID)

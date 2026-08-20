@@ -12,12 +12,26 @@ struct BookLibraryView: View {
             
             Divider()
             
-            // 2. Organization Action Bar
+            // 2. Organization & AI Action Bar
             organizationActionBar
             
-            Divider()
+            // 3. AI Progress Banner (if active)
+            if vm.isAIOrganizing {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("🤖 \(vm.aiProgressText)")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .background(Color.accentColor.opacity(0.12))
+                Divider()
+            }
             
-            // 3. Books Content (Grid / List)
+            // 4. Books Content (Grid / List)
             if vm.isLoading {
                 VStack(spacing: 12) {
                     ProgressView()
@@ -62,7 +76,7 @@ struct BookLibraryView: View {
                                 
                                 // Group Content
                                 if vm.viewMode == .grid {
-                                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140, maximum: 170), spacing: 14)], spacing: 16) {
+                                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 145, maximum: 175), spacing: 14)], spacing: 16) {
                                         ForEach(group.books) { book in
                                             bookGridCard(book: book)
                                         }
@@ -144,7 +158,7 @@ struct BookLibraryView: View {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
             )
-            .frame(width: 180)
+            .frame(width: 170)
             
             // Grouping Mode
             Picker("Gom nhóm", selection: $vm.groupMode) {
@@ -153,7 +167,7 @@ struct BookLibraryView: View {
                 }
             }
             .pickerStyle(.menu)
-            .frame(width: 140)
+            .frame(width: 170)
             .controlSize(.small)
             
             // View Mode Toggle
@@ -173,36 +187,71 @@ struct BookLibraryView: View {
     
     // MARK: - Organization Action Bar
     private var organizationActionBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
+            // AI Organize Button
+            Button {
+                if !vm.selectedBookIDs.isEmpty {
+                    vm.classifyAndOrganizeSelectedBooks()
+                } else {
+                    vm.classifyAndOrganizeAllBooks()
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "sparkles")
+                    Text(vm.selectedBookIDs.isEmpty ? "AI Phân Loại Tất Cả" : "AI Phân Loại (\(vm.selectedBookIDs.count))")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Color.purple)
+            .controlSize(.small)
+            .disabled(vm.isAIOrganizing || vm.books.isEmpty)
+            .help("Dùng AI macOS đọc nội dung sách và tự động gom vào thư mục thể loại tương ứng")
+            
+            // Smart Inbox Auto-Watch Toggle
+            Button {
+                vm.toggleSmartInboxWatcher()
+            } label: {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(vm.folderWatcher.isWatching ? Color.green : Color.secondary)
+                        .frame(width: 7, height: 7)
+                    Image(systemName: "tray.and.arrow.down.fill")
+                    Text(vm.folderWatcher.isWatching ? "Đang Giám Sát Inbox" : "Bật Hộp Thư Tự Động")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(vm.folderWatcher.isWatching ? Color.green : Color.secondary.opacity(0.2))
+            .foregroundColor(vm.folderWatcher.isWatching ? .white : .primary)
+            .controlSize(.small)
+            .help("Khi bật: Chỉ cần thả bất kỳ file PDF nào vào thư mục 📥_Inbox_Gom_Sach, AI sẽ tự động phân loại và chuyển vào thư mục chuẩn")
+            
             Button {
                 vm.groupSelectedBooksPrompt()
             } label: {
-                Label("Gom Vào Thư Mục Mới (\(vm.selectedBookIDs.count))", systemImage: "folder.badge.plus")
+                Label("Gom Thư Mục Mới", systemImage: "folder.badge.plus")
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(vm.selectedBookIDs.isEmpty)
-            .help("Tạo thư mục mới và di chuyển các cuốn sách đã chọn vào đó")
             
             Button {
                 vm.autoGroupSplitPartsAction()
             } label: {
-                Label("Tự Động Gom Phần Tách", systemImage: "wand.and.stars")
+                Label("Gom Phần Tách", systemImage: "wand.and.stars")
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .help("Tự động nhận diện và gom các file part1, part2,... vào thư mục của sách")
             
             Divider().frame(height: 16)
             
             if vm.selectedBookIDs.count == vm.filteredBooks.count && !vm.filteredBooks.isEmpty {
-                Button("Bỏ chọn tất cả") {
+                Button("Bỏ chọn") {
                     vm.deselectAll()
                 }
                 .buttonStyle(.borderless)
                 .font(.system(size: 11))
             } else {
-                Button("Chọn tất cả (\(vm.filteredBooks.count))") {
+                Button("Chọn tất cả") {
                     vm.selectAll()
                 }
                 .buttonStyle(.borderless)
@@ -238,6 +287,7 @@ struct BookLibraryView: View {
     // MARK: - Book Grid Card
     private func bookGridCard(book: BookItem) -> some View {
         let isSelected = vm.selectedBookIDs.contains(book.id)
+        let detectedCat = vm.bookCategories[book.id]
         
         return VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .topTrailing) {
@@ -285,6 +335,22 @@ struct BookLibraryView: View {
                     .font(.system(size: 11, weight: .bold))
                     .lineLimit(2)
                     .foregroundColor(.primary)
+                
+                // AI Category Badge
+                if let cat = detectedCat, cat != .general {
+                    HStack(spacing: 3) {
+                        Image(systemName: cat.icon)
+                            .font(.system(size: 9))
+                        Text(cat.rawValue)
+                            .font(.system(size: 9, weight: .semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(.purple)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.purple.opacity(0.1))
+                    .cornerRadius(3)
+                }
                 
                 HStack {
                     Text("\(book.pageCount) trang")
@@ -344,6 +410,7 @@ struct BookLibraryView: View {
     // MARK: - Book List Row
     private func bookListRow(book: BookItem) -> some View {
         let isSelected = vm.selectedBookIDs.contains(book.id)
+        let detectedCat = vm.bookCategories[book.id]
         
         return HStack(spacing: 10) {
             Button {
@@ -377,9 +444,17 @@ struct BookLibraryView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
                 
-                Text(book.folderName)
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                HStack(spacing: 6) {
+                    Text(book.folderName)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    
+                    if let cat = detectedCat, cat != .general {
+                        Text("• \(cat.rawValue)")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.purple)
+                    }
+                }
             }
             
             Spacer()
