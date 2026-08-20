@@ -3,8 +3,8 @@ import SwiftUI
 
 // MARK: - Live Ink Stroke Point
 struct InkPoint: Codable, Equatable {
-    var x: CGFloat // Normalized [0.0, 1.0] across page width
-    var y: CGFloat // Normalized [0.0, 1.0] across page height
+    var x: CGFloat // Raw PDF page coordinate (from pdfView.convert(to: page))
+    var y: CGFloat // Raw PDF page coordinate (from pdfView.convert(to: page))
     var pressure: CGFloat = 1.0
     
     init(x: CGFloat, y: CGFloat, pressure: CGFloat = 1.0) {
