@@ -8,7 +8,7 @@ struct BookReaderView: View {
 
     @State private var currentPageIndex: Int = 0
     @State private var totalPages: Int = 1
-    @State private var displayMode: PDFDisplayMode = .singlePageContinuous
+    @State private var displayMode: PDFDisplayMode = .singlePage
     @State private var scaleFactor: CGFloat = 1.0
     @State private var autoScales: Bool = true
     @State private var showThumbnailSidebar: Bool = false
@@ -19,6 +19,21 @@ struct BookReaderView: View {
     @State private var lookupQueryText: String = ""
     @State private var showNotebookSheet: Bool = false
     @State private var isDictionaryPinned: Bool = false
+    
+    // Live Wi-Fi Sync & Pen Drawing State
+    @ObservedObject private var syncManager = LiveCompanionSyncManager.shared
+    @State private var isPenModeActive: Bool = false
+    @State private var activePenColor: Color = .red
+    @State private var activePenWidth: CGFloat = 3.0
+    @State private var isHighlighter: Bool = false
+
+    private let penColors: [(Color, String)] = [
+        (.black, "Đen"),
+        (.red, "Đỏ"),
+        (.blue, "Xanh Dương"),
+        (.green, "Xanh Lá"),
+        (.yellow, "Dạ Quang")
+    ]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,16 +55,27 @@ struct BookReaderView: View {
                             Divider()
                         }
 
-                        // Center: PDF Canvas (Takes full flexible space)
-                        PDFKitReaderView(
-                            url: bookURL,
-                            currentPageIndex: $currentPageIndex,
-                            totalPages: $totalPages,
-                            displayMode: $displayMode,
-                            scaleFactor: $scaleFactor,
-                            autoScales: $autoScales,
-                            selectedText: $selectedText
-                        )
+                        // Center: PDF Canvas with Live Inking Overlay
+                        ZStack {
+                            PDFKitReaderView(
+                                url: bookURL,
+                                currentPageIndex: $currentPageIndex,
+                                totalPages: $totalPages,
+                                displayMode: $displayMode,
+                                scaleFactor: $scaleFactor,
+                                autoScales: $autoScales,
+                                selectedText: $selectedText
+                            )
+                            
+                            // Real-time Inking Layer (Mac ↔ iPad P2P)
+                            LiveInkingCanvasView(
+                                pageIndex: currentPageIndex,
+                                isDrawingEnabled: isPenModeActive,
+                                activeColor: isHighlighter ? .yellow : activePenColor,
+                                activeLineWidth: isHighlighter ? 14.0 : activePenWidth,
+                                isHighlighter: isHighlighter
+                            )
+                        }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                         // Right: Pinned AI Dictionary & Translation Side Panel
@@ -75,8 +101,16 @@ struct BookReaderView: View {
                         }
                     }
                     
+                    // Floating Pen Tool Palette (When Pen Mode is Active)
+                    if isPenModeActive {
+                        penToolPalette
+                            .padding(.bottom, 20)
+                            .padding(.trailing, isDictionaryPinned ? 380 : 20)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                    
                     // Floating Quick Lookup Button when text is selected (only if side panel not pinned)
-                    if !selectedText.isEmpty && !isDictionaryPinned {
+                    if !selectedText.isEmpty && !isDictionaryPinned && !isPenModeActive {
                         Button {
                             lookupQueryText = selectedText
                             showLookupSheet = true
@@ -101,6 +135,17 @@ struct BookReaderView: View {
             }
         }
         .background(Color.platformWindowBackground)
+        .onAppear {
+            syncManager.startSyncSession()
+            syncManager.onRemotePageJump = { remotePage in
+                if remotePage != self.currentPageIndex && remotePage >= 0 && remotePage < self.totalPages {
+                    self.currentPageIndex = remotePage
+                }
+            }
+        }
+        .onChange(of: currentPageIndex) { newPage in
+            syncManager.broadcastPageJump(pageIndex: newPage)
+        }
         .onChange(of: selectedText) { newText in
             if isDictionaryPinned && !newText.isEmpty {
                 lookupQueryText = newText
@@ -143,8 +188,37 @@ struct BookReaderView: View {
                     .font(.system(size: 12, weight: .bold))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .frame(maxWidth: 180, alignment: .leading)
+                    .frame(maxWidth: 160, alignment: .leading)
             }
+
+            // Wi-Fi Live Sync Status Pill (P2P Mac ↔ iPad)
+            Button {
+                if syncManager.isSessionActive {
+                    syncManager.stopSyncSession()
+                } else {
+                    syncManager.startSyncSession()
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(syncManager.connectedPeers.isEmpty ? Color.orange : Color.green)
+                        .frame(width: 6, height: 6)
+                    
+                    if let peer = syncManager.connectedPeers.first {
+                        Text("\(peer.displayName)")
+                            .font(.system(size: 10, weight: .semibold))
+                    } else {
+                        Text(syncManager.isSessionActive ? "Tìm iPad..." : "Bật Wi-Fi Sync")
+                            .font(.system(size: 10))
+                    }
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.platformControlBackground)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("Đồng bộ nét bút Apple Pencil thời gian thực qua Wi-Fi với iPad/Mac")
 
             Spacer()
 
@@ -187,6 +261,27 @@ struct BookReaderView: View {
 
             // Right Group: Controls
             HStack(spacing: 6) {
+                // Live Pen Mode Toggle Button
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isPenModeActive.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: isPenModeActive ? "pencil.tip.crop.circle.badge.plus" : "pencil.tip")
+                        if isPenModeActive {
+                            Text("Bút Vẽ")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(isPenModeActive ? Color.orange : Color.secondary.opacity(0.18))
+                .foregroundColor(isPenModeActive ? .white : .primary)
+                .controlSize(.small)
+                .help("Bật/Tắt chế độ vẽ Apple Pencil & ghi chú trực tiếp")
+                .keyboardShortcut("p", modifiers: .command)
+
                 // Pin / Dock AI Dictionary Side Panel
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {
@@ -199,7 +294,7 @@ struct BookReaderView: View {
                     HStack(spacing: 3) {
                         Image(systemName: isDictionaryPinned ? "sidebar.right" : "character.book.closed")
                         if isDictionaryPinned {
-                            Text("Đang Ghim")
+                            Text("Ghim Dịch")
                                 .font(.system(size: 11, weight: .semibold))
                         }
                     }
@@ -293,6 +388,78 @@ struct BookReaderView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(Color.platformControlBackground)
+    }
+
+    // MARK: - Floating Pen Tool Palette
+    private var penToolPalette: some View {
+        HStack(spacing: 12) {
+            // Colors
+            HStack(spacing: 6) {
+                ForEach(penColors, id: \.1) { color, name in
+                    Button {
+                        isHighlighter = (name == "Dạ Quang")
+                        if !isHighlighter {
+                            activePenColor = color
+                        }
+                    } label: {
+                        Circle()
+                            .fill(color)
+                            .frame(width: 18, height: 18)
+                            .overlay(
+                                Circle()
+                                    .stroke(
+                                        (isHighlighter && name == "Dạ Quang") || (!isHighlighter && activePenColor == color)
+                                            ? Color.primary
+                                            : Color.clear,
+                                        lineWidth: 2
+                                    )
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Màu \(name)")
+                }
+            }
+            
+            Divider()
+                .frame(height: 18)
+            
+            // Stroke Width
+            HStack(spacing: 4) {
+                Button { activePenWidth = 2.0; isHighlighter = false } label: {
+                    Circle().fill(Color.primary).frame(width: 4, height: 4)
+                }
+                .buttonStyle(.plain)
+                
+                Button { activePenWidth = 4.0; isHighlighter = false } label: {
+                    Circle().fill(Color.primary).frame(width: 8, height: 8)
+                }
+                .buttonStyle(.plain)
+                
+                Button { activePenWidth = 8.0; isHighlighter = false } label: {
+                    Circle().fill(Color.primary).frame(width: 12, height: 12)
+                }
+                .buttonStyle(.plain)
+            }
+            
+            Divider()
+                .frame(height: 18)
+            
+            // Clear Current Page Ink
+            Button {
+                syncManager.broadcastClearPage(pageIndex: currentPageIndex)
+            } label: {
+                Image(systemName: "eraser")
+                    .font(.system(size: 13))
+                    .foregroundColor(.red)
+            }
+            .buttonStyle(.plain)
+            .help("Xoá toàn bộ nét vẽ trang hiện tại")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.platformControlBackground)
+        .clipShape(Capsule())
+        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
     }
 
     // MARK: - Thumbnails Drawer
