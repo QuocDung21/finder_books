@@ -11,6 +11,7 @@ struct PDFKitReaderView: NSViewRepresentable {
     @Binding var displayMode: PDFDisplayMode
     @Binding var scaleFactor: CGFloat
     @Binding var autoScales: Bool
+    @Binding var selectedText: String
     
     func makeNSView(context: Context) -> PDFView {
         let pdfView = PDFView()
@@ -35,6 +36,13 @@ struct PDFKitReaderView: NSViewRepresentable {
             context.coordinator,
             selector: #selector(Coordinator.pageChanged(_:)),
             name: .PDFViewPageChanged,
+            object: pdfView
+        )
+        
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.selectionChanged(_:)),
+            name: .PDFViewSelectionChanged,
             object: pdfView
         )
         
@@ -97,6 +105,14 @@ struct PDFKitReaderView: NSViewRepresentable {
             }
         }
         
+        @objc func selectionChanged(_ notification: Notification) {
+            guard let pdfView = notification.object as? PDFView else { return }
+            let sel = pdfView.currentSelection?.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            DispatchQueue.main.async {
+                self.parent.selectedText = sel
+            }
+        }
+        
         deinit {
             NotificationCenter.default.removeObserver(self)
         }
@@ -113,6 +129,7 @@ struct PDFKitReaderView: UIViewRepresentable {
     @Binding var displayMode: PDFDisplayMode
     @Binding var scaleFactor: CGFloat
     @Binding var autoScales: Bool
+    @Binding var selectedText: String
     
     func makeUIView(context: Context) -> PDFView {
         let pdfView = PDFView()
@@ -137,6 +154,13 @@ struct PDFKitReaderView: UIViewRepresentable {
             context.coordinator,
             selector: #selector(Coordinator.pageChanged(_:)),
             name: .PDFViewPageChanged,
+            object: pdfView
+        )
+        
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.selectionChanged(_:)),
+            name: .PDFViewSelectionChanged,
             object: pdfView
         )
         
@@ -195,6 +219,14 @@ struct PDFKitReaderView: UIViewRepresentable {
                 DispatchQueue.main.async {
                     self.parent.currentPageIndex = index
                 }
+            }
+        }
+        
+        @objc func selectionChanged(_ notification: Notification) {
+            guard let pdfView = notification.object as? PDFView else { return }
+            let sel = pdfView.currentSelection?.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            DispatchQueue.main.async {
+                self.parent.selectedText = sel
             }
         }
         
