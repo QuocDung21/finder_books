@@ -142,6 +142,10 @@ if [ "$TARGET_MODE" == "physical" ] || [ "$TARGET_MODE" == "ipa" ]; then
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
     <key>NSBonjourServices</key>
     <array>
         <string>_fb-sync._tcp</string>
