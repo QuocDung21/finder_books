@@ -21,8 +21,15 @@ class BookLibraryViewModel: ObservableObject {
     @Published var aiProgressText: String = ""
     @Published var bookCategories: [String: BookCategory] = [:] // Book ID -> Detected Category
     
+    // MARK: - Sync & Deduplication State
+    @Published var isSyncScanning: Bool = false
+    @Published var syncSheetItems: [ScannedSyncItem] = []
+    @Published var syncSourceFolderURL: URL? = nil
+    @Published var showSyncSheet: Bool = false
+    
     let folderWatcher = FolderWatcherService()
     private let aiClassifier = AIBookClassificationService()
+    private let syncService = BookSyncService()
     private let service = BookLibraryService()
     
     // MARK: - Thumbnail Cache
@@ -348,6 +355,40 @@ class BookLibraryViewModel: ObservableObject {
                 try? service.deleteBook(at: item.url)
             }
             refreshLibrary()
+        }
+    }
+    
+    // MARK: - Scan & Sync Source Folder Prompt
+    func promptScanAndSyncSourceFolder() {
+        guard libraryRootURL != nil else {
+            showAlert(title: "Chưa chọn kho sách", message: "Vui lòng chọn thư mục kho sách đích trước.")
+            return
+        }
+        
+        let panel = NSOpenPanel()
+        panel.title = "Chọn thư mục nguồn cần quét sách (ví dụ: Downloads)"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        
+        if panel.runModal() == .OK, let sourceURL = panel.url {
+            syncSourceFolderURL = sourceURL
+            isSyncScanning = true
+            
+            Task {
+                let scannedItems = await syncService.scanAndCompare(sourceDir: sourceURL, existingBooks: self.books)
+                self.syncSheetItems = scannedItems
+                self.isSyncScanning = false
+                
+                if scannedItems.isEmpty {
+                    self.showAlert(
+                        title: "Không Có Sách PDF",
+                        message: "Không tìm thấy file sách PDF nào trong thư mục:\n\(sourceURL.path)"
+                    )
+                } else {
+                    self.showSyncSheet = true
+                }
+            }
         }
     }
     

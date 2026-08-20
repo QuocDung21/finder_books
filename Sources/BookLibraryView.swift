@@ -106,6 +106,18 @@ struct BookLibraryView: View {
                 dismissButton: .default(Text("Đóng"))
             )
         }
+        .sheet(isPresented: $vm.showSyncSheet) {
+            if let srcURL = vm.syncSourceFolderURL, let libURL = vm.libraryRootURL {
+                BookSyncSheet(
+                    sourceFolderURL: srcURL,
+                    libraryTargetURL: libURL,
+                    items: vm.syncSheetItems,
+                    onSyncCompleted: {
+                        vm.refreshLibrary()
+                    }
+                )
+            }
+        }
     }
     
     // MARK: - Library Toolbar
@@ -224,6 +236,23 @@ struct BookLibraryView: View {
             .foregroundColor(vm.folderWatcher.isWatching ? .white : .primary)
             .controlSize(.small)
             .help("Khi bật: Chỉ cần thả bất kỳ file PDF nào vào thư mục 📥_Inbox_Gom_Sach, AI sẽ tự động phân loại và chuyển vào thư mục chuẩn")
+            
+            Button {
+                vm.promptScanAndSyncSourceFolder()
+            } label: {
+                HStack(spacing: 5) {
+                    if vm.isSyncScanning {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                    Text(vm.isSyncScanning ? "Đang Quét..." : "Quét Sách (Downloads...)")
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(vm.isSyncScanning)
+            .help("Chọn một thư mục nguồn (như Downloads) để quét so sánh với kho sách, tự động gom sách mới và xoá file trùng")
             
             Button {
                 vm.groupSelectedBooksPrompt()
