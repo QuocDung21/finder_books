@@ -335,10 +335,7 @@ struct BookReaderView: View {
                     .controlSize(.small)
                     .help("Gửi file PDF này sang \(syncManager.connectedDeviceName) (Wi-Fi/Dây)")
                 }
-                
-                Divider()
-                    .frame(height: 16)
-
+                   #if os(macOS)
                 // Layout Mode
                 Picker("", selection: $displayMode) {
                     Image(systemName: "rectangle.portrait.and.arrow.forward").tag(PDFDisplayMode.singlePageContinuous)
@@ -376,6 +373,7 @@ struct BookReaderView: View {
                     }
                     .controlSize(.small)
                 }
+                #endif
 
                 // Toggle Thumbnails Drawer
                 Button {
@@ -391,22 +389,24 @@ struct BookReaderView: View {
                 .controlSize(.small)
                 .help("Ẩn/Hiện dải ảnh thu nhỏ")
 
+                #if os(macOS)
                 // Split Action
                 Button {
-                    onSplitBook(bookURL)
+                    onOpenSplitter(bookURL)
                 } label: {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 4) {
                         Image(systemName: "scissors")
-                        Text("Tách")
+                        Text("Tách Sách")
                     }
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .help("Mở sách này trong công cụ tách sách")
+                .help("Mở công cụ tách cuốn sách này")
+                #endif
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
         .background(Color.platformControlBackground)
     }
 

@@ -113,7 +113,11 @@ struct AIDictionarySidePanel: View {
                 }
             }
         }
-        .frame(minWidth: 320, idealWidth: 360, maxWidth: 450)
+        #if os(macOS)
+        .frame(minWidth: 300, idealWidth: 340, maxWidth: 420)
+        #elseif os(iOS)
+        .frame(minWidth: 260, idealWidth: 280, maxWidth: 320)
+        #endif
         .background(Color.platformWindowBackground)
         .onChange(of: queryText) { newQuery in
             if !newQuery.isEmpty && newQuery != searchInput {

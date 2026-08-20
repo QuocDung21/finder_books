@@ -16,6 +16,10 @@ struct LiveInkingCanvasView: View {
             let h = geo.size.height
             
             ZStack {
+                // Background transparent catch area
+                Color.clear
+                    .contentShape(Rectangle())
+                
                 // Render finished strokes from both local and remote (iPad/Mac)
                 let strokes = syncManager.pageStrokes[pageIndex] ?? []
                 ForEach(strokes) { stroke in
@@ -27,9 +31,8 @@ struct LiveInkingCanvasView: View {
                     drawActivePath(points: currentStrokePoints, width: w, height: h)
                 }
             }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 1, coordinateSpace: .local)
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
                     .onChanged { value in
                         guard isDrawingEnabled, w > 0, h > 0 else { return }
                         let normalizedX = max(0, min(1, value.location.x / w))
