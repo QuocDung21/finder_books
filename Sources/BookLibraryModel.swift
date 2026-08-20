@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
 
 // MARK: - Book Item Model
 struct BookItem: Identifiable, Hashable {

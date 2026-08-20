@@ -1,6 +1,10 @@
 import Foundation
 import PDFKit
+#if os(macOS)
 import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
 
 struct BookLibraryService {
     

@@ -86,7 +86,7 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
-                    .background(Color(nsColor: .textBackgroundColor))
+                    .background(Color.platformTextBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -157,6 +157,7 @@ struct ContentView: View {
                         }
                         .keyboardShortcut(",", modifiers: .command)
                         
+                        #if os(macOS)
                         if let rootDir = libraryVM.libraryRootURL {
                             Button {
                                 NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: rootDir.path)
@@ -164,6 +165,7 @@ struct ContentView: View {
                                 Label("Mở Trong Finder", systemImage: "folder")
                             }
                         }
+                        #endif
                         
                         Button {
                             libraryVM.refreshLibrary()

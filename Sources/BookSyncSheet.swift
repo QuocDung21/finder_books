@@ -128,7 +128,7 @@ struct BookSyncSheet: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color.platformControlBackground)
     }
     
     // MARK: - Control Bar
@@ -164,7 +164,7 @@ struct BookSyncSheet: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
+        .background(Color.platformControlBackground.opacity(0.6))
     }
     
     // MARK: - Items List
@@ -230,7 +230,7 @@ struct BookSyncSheet: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(items[globalIndex].isSelected ? Color(nsColor: .controlBackgroundColor) : Color.clear)
+                    .background(items[globalIndex].isSelected ? Color.platformControlBackground : Color.clear)
                     .cornerRadius(6)
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
@@ -240,7 +240,7 @@ struct BookSyncSheet: View {
             }
             .padding(16)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.platformWindowBackground)
     }
     
     // MARK: - Footer
@@ -283,7 +283,7 @@ struct BookSyncSheet: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color.platformControlBackground)
     }
     
     // MARK: - Helpers

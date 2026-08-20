@@ -40,82 +40,24 @@ struct BookSplitterView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
-                .background(Color(nsColor: .controlBackgroundColor))
+                .background(Color.platformControlBackground)
                 
                 Divider()
             }
             
             // Splitter Body
+            #if os(macOS)
             HSplitView {
-                // MARK: - Left Pane: Document & Split Preview
-                VStack(spacing: 0) {
-                    ScrollView(.vertical, showsIndicators: true) {
-                        VStack(spacing: 16) {
-                            // 1. Document Hero / Drop Zone
-                            documentHeroView
-                            
-                            // 2. Visual Segment Bar
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Label("Tỉ lệ phân chia sách", systemImage: "chart.bar.xaxis")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    if vm.totalPages > 0 {
-                                        Text("\(vm.calculatedParts.count) phần")
-                                            .font(.system(size: 11, weight: .semibold))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                VisualizerView(parts: vm.calculatedParts, totalPages: vm.totalPages) { selectedPart in
-                                    vm.previewPart = selectedPart
-                                }
-                            }
-                            .padding(14)
-                            .background(Color(nsColor: .controlBackgroundColor))
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
-                            )
-                            
-                            // 3. Parts Table & Filenames
-                            partsTableView
-                        }
-                        .padding(16)
-                    }
-                    
-                    Divider()
-                    
-                    // Bottom Status Bar
-                    bottomStatusBar
-                }
-                .frame(minWidth: 460, maxWidth: .infinity)
-                
-                // MARK: - Right Pane: Configuration & Output Inspector
-                VStack(spacing: 0) {
-                    ScrollView(.vertical, showsIndicators: true) {
-                        VStack(spacing: 16) {
-                            // Split Mode Config
-                            splitModeConfigView
-                            
-                            // Destination Folder Config
-                            destinationConfigView
-                            
-                            // Live Process & Console Logs
-                            liveProcessView
-                        }
-                        .padding(16)
-                    }
-                    
-                    Divider()
-                    
-                    // Primary Action Button Footer
-                    sidebarFooterView
-                }
-                .frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
-                .background(Color(nsColor: .windowBackgroundColor))
+                splitterLeftPane
+                splitterRightPane
             }
+            #elseif os(iOS)
+            HStack(spacing: 0) {
+                splitterLeftPane
+                Divider()
+                splitterRightPane
+            }
+            #endif
         }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             guard let provider = providers.first else { return false }
@@ -131,6 +73,78 @@ struct BookSplitterView: View {
         .sheet(item: $vm.previewPart) { part in
             QuickPreviewSheet(vm: vm, part: part)
         }
+    }
+    
+    // MARK: - Splitter Panes
+    private var splitterLeftPane: some View {
+        VStack(spacing: 0) {
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(spacing: 16) {
+                    // 1. Document Hero / Drop Zone
+                    documentHeroView
+                    
+                    // 2. Visual Segment Bar
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Label("Tỉ lệ phân chia sách", systemImage: "chart.bar.xaxis")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            if vm.totalPages > 0 {
+                                Text("\(vm.calculatedParts.count) phần")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        VisualizerView(parts: vm.calculatedParts, totalPages: vm.totalPages) { selectedPart in
+                            vm.previewPart = selectedPart
+                        }
+                    }
+                    .padding(14)
+                    .background(Color.platformControlBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                    )
+                    
+                    // 3. Parts Table & Filenames
+                    partsTableView
+                }
+                .padding(16)
+            }
+            
+            Divider()
+            
+            // Bottom Status Bar
+            bottomStatusBar
+        }
+        .frame(minWidth: 460, maxWidth: .infinity)
+    }
+    
+    private var splitterRightPane: some View {
+        VStack(spacing: 0) {
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(spacing: 16) {
+                    // Split Mode Config
+                    splitModeConfigView
+                    
+                    // Destination Folder Config
+                    destinationConfigView
+                    
+                    // Live Process & Console Logs
+                    liveProcessView
+                }
+                .padding(16)
+            }
+            
+            Divider()
+            
+            // Primary Action Button Footer
+            sidebarFooterView
+        }
+        .frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
+        .background(Color.platformWindowBackground)
     }
     
     // MARK: - Document Hero / Drop Zone
@@ -179,7 +193,7 @@ struct BookSplitterView: View {
                     }
                 }
                 .padding(14)
-                .background(Color(nsColor: .controlBackgroundColor))
+                .background(Color.platformControlBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -219,7 +233,7 @@ struct BookSplitterView: View {
                 .padding(.vertical, 32)
                 .background(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color(nsColor: .controlBackgroundColor))
+                        .fill(Color.platformControlBackground)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -267,7 +281,7 @@ struct BookSplitterView: View {
                     .padding(.vertical, 24)
                     Spacer()
                 }
-                .background(Color(nsColor: .controlBackgroundColor))
+                .background(Color.platformControlBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else {
                 VStack(spacing: 6) {
@@ -355,14 +369,14 @@ struct BookSplitterView: View {
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(Color(nsColor: .controlBackgroundColor))
+                        .background(Color.platformControlBackground)
                         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                     }
                 }
             }
         }
         .padding(14)
-        .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
+        .background(Color.platformTextBackground.opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -553,7 +567,7 @@ struct BookSplitterView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color.platformControlBackground)
     }
     
     // MARK: - Sidebar Footer
@@ -582,7 +596,7 @@ struct BookSplitterView: View {
             .disabled(vm.isProcessing || vm.calculatedParts.isEmpty)
         }
         .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color.platformControlBackground)
     }
 }
 
@@ -607,7 +621,7 @@ struct NativeInspectorSection<Content: View>: View {
             content
         }
         .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color.platformControlBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)

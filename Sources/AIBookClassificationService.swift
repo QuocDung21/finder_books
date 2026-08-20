@@ -222,8 +222,8 @@ final class AIBookClassificationService {
     // MARK: - Fallback Apple Vision OCR
     private func performOCR(on page: PDFPage) async -> String {
         return await Task.detached {
-            let thumb = page.thumbnail(of: CGSize(width: 800, height: 1000), for: .cropBox)
-            guard let cgImage = thumb.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            let thumb = page.platformThumbnail(size: CGSize(width: 800, height: 1000))
+            guard let cgImage = thumb.platformCGImage else {
                 return ""
             }
             
@@ -317,8 +317,8 @@ final class AIBookClassificationService {
     private func analyzeCoverVisualLayout(doc: PDFDocument) async -> VisualCoverResult {
         guard let coverPage = doc.page(at: 0) else { return VisualCoverResult() }
         
-        let thumb = coverPage.thumbnail(of: CGSize(width: 900, height: 1200), for: .cropBox)
-        guard let cgImage = thumb.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+        let thumb = coverPage.platformThumbnail(size: CGSize(width: 900, height: 1200))
+        guard let cgImage = thumb.platformCGImage else {
             return VisualCoverResult()
         }
         

@@ -15,7 +15,7 @@ struct VisualizerView: View {
             if totalPages <= 0 || parts.isEmpty {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color(nsColor: .controlBackgroundColor))
+                        .fill(Color.platformControlBackground)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .stroke(Color.secondary.opacity(0.15), lineWidth: 1)

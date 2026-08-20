@@ -26,7 +26,7 @@ struct BookRenameSheet: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(Color.platformControlBackground)
 
             Divider()
 
@@ -105,7 +105,7 @@ struct BookRenameSheet: View {
                                         }
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 6)
-                                        .background(Color(nsColor: .controlBackgroundColor))
+                                        .background(Color.platformControlBackground)
                                         .cornerRadius(6)
                                     }
                                     .buttonStyle(.plain)
@@ -146,7 +146,7 @@ struct BookRenameSheet: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(Color.platformControlBackground)
         }
         .frame(minWidth: 540, maxWidth: 600)
         .onAppear {

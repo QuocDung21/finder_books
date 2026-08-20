@@ -19,7 +19,7 @@ struct BookLibraryView: View {
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .background(Color.platformWindowBackground)
             } else if vm.filteredBooks.isEmpty {
                 emptyLibraryView
             } else {
@@ -29,7 +29,7 @@ struct BookLibraryView: View {
                         headerBanner
                         
                         // Book Groups
-                        ForEach(vm.groupedBooks) { group in
+                        ForEach(vm.groupedBooks, id: \.id) { group in
                             VStack(alignment: .leading, spacing: 14) {
                                 // Subtle Section Header if more than 1 group
                                 if vm.groupMode != .none && vm.groupedBooks.count > 1 {
@@ -40,6 +40,7 @@ struct BookLibraryView: View {
                                         
                                         Spacer()
                                         
+                                        #if os(macOS)
                                         if let fURL = group.folderURL {
                                             Button {
                                                 NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: fURL.path)
@@ -51,6 +52,7 @@ struct BookLibraryView: View {
                                             .buttonStyle(.plain)
                                             .help("Mở thư mục này trong Finder")
                                         }
+                                        #endif
                                     }
                                     .padding(.horizontal, 4)
                                 }
@@ -69,7 +71,7 @@ struct BookLibraryView: View {
                                         }
                                     }
                                     .padding(6)
-                                    .background(Color(nsColor: .controlBackgroundColor))
+                                    .background(Color.platformControlBackground)
                                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                 }
                             }
@@ -77,7 +79,7 @@ struct BookLibraryView: View {
                     }
                     .padding(24)
                 }
-                .background(Color(nsColor: .windowBackgroundColor))
+                .background(Color.platformWindowBackground)
             }
         }
         .alert(isPresented: $vm.showAlert) {
@@ -111,7 +113,7 @@ struct BookLibraryView: View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(vm.selectedSidebarItem.title)
+                    Text((vm.selectedSidebarItem ?? .allBooks).title)
                         .font(.system(size: 24, weight: .bold))
                     
                     if vm.isAIOrganizing {
@@ -433,6 +435,6 @@ struct BookLibraryView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.platformWindowBackground)
     }
 }

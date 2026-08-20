@@ -60,7 +60,7 @@ struct QuickPreviewSheet: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(Color.platformControlBackground)
             
             Divider()
             
@@ -92,7 +92,7 @@ struct QuickPreviewSheet: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 10)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(Color.platformControlBackground)
         }
         .frame(minWidth: 700, minHeight: 520)
     }
@@ -156,7 +156,7 @@ struct QuickPreviewSheet: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(Color.platformControlBackground)
             .cornerRadius(8)
             
             // Single Page Content Card
@@ -234,13 +234,13 @@ struct QuickPreviewSheet: View {
                     .lineLimit(4)
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(nsColor: .textBackgroundColor))
+                    .background(Color.platformTextBackground)
                     .cornerRadius(6)
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color.platformControlBackground)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)

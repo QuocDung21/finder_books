@@ -18,7 +18,7 @@ struct AISettingsView: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(Color.platformControlBackground)
             
             Divider()
             
@@ -44,19 +44,19 @@ struct AISettingsView: View {
                             .padding(.top, 2)
                     }
                     .padding(14)
-                    .background(Color(nsColor: .controlBackgroundColor))
+                    .background(Color.platformControlBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     
                     // Section 2: Provider Specific Configuration
                     providerSpecificConfig
                         .padding(14)
-                        .background(Color(nsColor: .controlBackgroundColor))
+                        .background(Color.platformControlBackground)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     
                     // Section 3: Scan Depth & Vision Options
                     behaviorSettingsSection
                         .padding(14)
-                        .background(Color(nsColor: .controlBackgroundColor))
+                        .background(Color.platformControlBackground)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
                 .padding(20)
@@ -103,7 +103,7 @@ struct AISettingsView: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(Color.platformControlBackground)
         }
         .frame(minWidth: 580, idealWidth: 620, minHeight: 480)
     }

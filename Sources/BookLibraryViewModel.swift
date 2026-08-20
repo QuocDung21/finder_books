@@ -1,6 +1,10 @@
 import SwiftUI
 import PDFKit
+#if os(macOS)
 import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
 
 // MARK: - Sidebar Item Navigation
 enum LibrarySidebarItem: Hashable, Identifiable {
@@ -44,7 +48,7 @@ enum LibrarySidebarItem: Hashable, Identifiable {
 @MainActor
 class BookLibraryViewModel: ObservableObject {
     // MARK: - Navigation & Sidebar State
-    @Published var selectedSidebarItem: LibrarySidebarItem = .allBooks
+    @Published var selectedSidebarItem: LibrarySidebarItem? = .allBooks
     
     // MARK: - Library State
     @Published var libraryRootURL: URL? = nil
@@ -101,7 +105,7 @@ class BookLibraryViewModel: ObservableObject {
         var list = books
         
         // 1. Filter by Sidebar Item
-        switch selectedSidebarItem {
+        switch selectedSidebarItem ?? .allBooks {
         case .allBooks:
             break
         case .smartInbox:
@@ -368,6 +372,7 @@ class BookLibraryViewModel: ObservableObject {
         guard let root = libraryRootURL else { return }
         let selectedItems = books.filter { selectedBookIDs.contains($0.id) }
         
+        #if os(macOS)
         let alert = NSAlert()
         alert.messageText = "Gom Sách Vào Thư Mục Mới"
         alert.informativeText = "Gom \(selectedItems.count) cuốn sách đã chọn vào một thư mục mới trong:\n\(root.path)"
@@ -391,6 +396,7 @@ class BookLibraryViewModel: ObservableObject {
                 }
             }
         }
+        #endif
     }
     
     // MARK: - Auto Group Split Parts
@@ -411,7 +417,9 @@ class BookLibraryViewModel: ObservableObject {
     
     // MARK: - Reveal in Finder
     func revealInFinder(book: BookItem) {
+        #if os(macOS)
         NSWorkspace.shared.selectFile(book.url.path, inFileViewerRootedAtPath: book.folderURL.path)
+        #endif
     }
     
     // MARK: - Move to Trash
@@ -419,6 +427,7 @@ class BookLibraryViewModel: ObservableObject {
         guard !selectedBookIDs.isEmpty else { return }
         let selectedItems = books.filter { selectedBookIDs.contains($0.id) }
         
+        #if os(macOS)
         let alert = NSAlert()
         alert.messageText = "Xoá Sách Đã Chọn"
         alert.informativeText = "Bạn có chắc chắn muốn chuyển \(selectedItems.count) cuốn sách đã chọn vào Thùng Rác (Trash) không?"
@@ -432,6 +441,12 @@ class BookLibraryViewModel: ObservableObject {
             }
             refreshLibrary()
         }
+        #elseif os(iOS)
+        for item in selectedItems {
+            try? service.deleteBook(at: item.url)
+        }
+        refreshLibrary()
+        #endif
     }
     
     // MARK: - Scan & Sync Source Folder Prompt
@@ -441,6 +456,7 @@ class BookLibraryViewModel: ObservableObject {
             return
         }
         
+        #if os(macOS)
         let panel = NSOpenPanel()
         panel.title = "Chọn thư mục nguồn cần quét sách (ví dụ: Downloads)"
         panel.canChooseDirectories = true
@@ -466,6 +482,7 @@ class BookLibraryViewModel: ObservableObject {
                 }
             }
         }
+        #endif
     }
     
     // MARK: - Rename Book Action

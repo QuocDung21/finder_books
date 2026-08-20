@@ -1,6 +1,11 @@
 import SwiftUI
 import PDFKit
+
+#if os(macOS)
 import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
 
 @MainActor
 class AppViewModel: ObservableObject {
@@ -187,6 +192,7 @@ class AppViewModel: ObservableObject {
     }
 
     func createNewFolderPrompt() {
+        #if os(macOS)
         guard let baseFolder = outputFolderURL ?? (selectedPDFURL?.deletingLastPathComponent()) else {
             showSimpleAlert(title: "Chưa Chọn Thư Mục", message: "Vui lòng chọn thư mục gốc trước khi tạo thư mục con mới.")
             return
@@ -219,6 +225,7 @@ class AppViewModel: ObservableObject {
                 }
             }
         }
+        #endif
     }
 
     // MARK: - Calculations
@@ -451,7 +458,9 @@ class AppViewModel: ObservableObject {
                 statusColor = .green
 
                 // Play native system success sound
+                #if os(macOS)
                 NSSound(named: "Glass")?.play()
+                #endif
 
                 showSuccessExportAlert(tasks: tasks, targetDir: targetDir)
             } catch {
@@ -475,7 +484,9 @@ class AppViewModel: ObservableObject {
             message: msg,
             confirmTitle: "Mở Thư Mục"
         ) {
+            #if os(macOS)
             NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: targetDir.path)
+            #endif
         }
     }
 
