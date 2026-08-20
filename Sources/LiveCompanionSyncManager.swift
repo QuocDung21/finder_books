@@ -473,6 +473,7 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         var current = pageStrokes[stroke.pageIndex] ?? []
         current.append(stroke)
         pageStrokes[stroke.pageIndex] = current
+        NotificationCenter.default.post(name: NSNotification.Name("LiveCompanionStrokesUpdated"), object: nil)
         
         let payload = LiveDrawingPayload(
             action: .addStroke,
@@ -489,6 +490,7 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
     @MainActor
     func broadcastClearPage(pageIndex: Int) {
         pageStrokes[pageIndex] = []
+        NotificationCenter.default.post(name: NSNotification.Name("LiveCompanionStrokesUpdated"), object: nil)
         
         let payload = LiveDrawingPayload(
             action: .clearPage,
