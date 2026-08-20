@@ -5,6 +5,9 @@ struct LibrarySidebarView: View {
     var onOpenSplitter: () -> Void
     var onOpenSettings: () -> Void
     
+    @ObservedObject private var syncManager = LiveCompanionSyncManager.shared
+    @State private var showWiFiSyncSheet: Bool = false
+    
     var body: some View {
         List(selection: $vm.selectedSidebarItem) {
             // MARK: - Section 1: Thư Viện
@@ -58,7 +61,31 @@ struct LibrarySidebarView: View {
                 }
             }
             
-            // MARK: - Section 2: Thể Loại
+            // MARK: - Section 2: Đồng Bộ Wi-Fi (Mac ↔ iPad)
+            Section("Kết Nối Thiết Bị") {
+                Button {
+                    showWiFiSyncSheet = true
+                } label: {
+                    Label {
+                        HStack {
+                            Text("Đồng Bộ Wi-Fi (Mac/iPad)")
+                                .font(.system(size: 12))
+                                .foregroundColor(.primary)
+                            Spacer()
+                            let isConn = syncManager.isDirectTCPConnected || !syncManager.connectedPeers.isEmpty
+                            Circle()
+                                .fill(isConn ? Color.green : Color.orange)
+                                .frame(width: 7, height: 7)
+                        }
+                    } icon: {
+                        Image(systemName: "wifi")
+                            .foregroundColor(syncManager.isDirectTCPConnected || !syncManager.connectedPeers.isEmpty ? .green : .accentColor)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            
+            // MARK: - Section 3: Thể Loại
             Section("Thể Loại") {
                 ForEach(BookCategory.allCases.filter { $0 != .general }) { cat in
                     NavigationLink(value: LibrarySidebarItem.category(cat)) {
@@ -82,7 +109,7 @@ struct LibrarySidebarView: View {
                 }
             }
             
-            // MARK: - Section 3: Công Cụ
+            // MARK: - Section 4: Công Cụ
             Section("Công Cụ") {
                 Button {
                     onOpenSplitter()
@@ -111,6 +138,9 @@ struct LibrarySidebarView: View {
         }
         .listStyle(.sidebar)
         .frame(minWidth: 210, idealWidth: 230, maxWidth: 280)
+        .sheet(isPresented: $showWiFiSyncSheet) {
+            WiFiSyncControlSheet()
+        }
     }
     
     private func countForCategory(_ cat: BookCategory) -> Int {
@@ -119,7 +149,7 @@ struct LibrarySidebarView: View {
             if folder == cat.rawValue || folder == cat.folderName || folder.contains(cat.rawValue) {
                 return true
             }
-            return vm.bookCategories[book.id] == cat
+            return false
         }.count
     }
     
@@ -127,11 +157,11 @@ struct LibrarySidebarView: View {
         switch cat {
         case .technology: return .blue
         case .business: return .green
-        case .literature: return .purple
-        case .selfHelp: return .teal
-        case .scienceHistory: return .indigo
-        case .languageEducation: return .orange
-        case .artDesign: return .pink
+        case .literature: return .pink
+        case .selfHelp: return .orange
+        case .scienceHistory: return .purple
+        case .languageEducation: return .indigo
+        case .artDesign: return .teal
         case .comicsManga: return .red
         case .general: return .secondary
         }

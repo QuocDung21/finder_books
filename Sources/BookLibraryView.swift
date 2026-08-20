@@ -7,6 +7,7 @@ struct BookLibraryView: View {
     var onSelectBookToSplit: (URL) -> Void
     
     @ObservedObject private var syncManager = LiveCompanionSyncManager.shared
+    @State private var showWiFiSyncSheet: Bool = false
     
     var body: some View {
         ZStack(alignment: .top) {
@@ -136,6 +137,9 @@ struct BookLibraryView: View {
                 vm.renameBookAction(book: book, newTitle: newTitle)
             }
         }
+        .sheet(isPresented: $showWiFiSyncSheet) {
+            WiFiSyncControlSheet()
+        }
     }
     
     // MARK: - Clean Header Banner
@@ -179,6 +183,32 @@ struct BookLibraryView: View {
             }
             
             Spacer()
+            
+            // Wi-Fi Sync Status Button
+            Button {
+                showWiFiSyncSheet = true
+            } label: {
+                HStack(spacing: 5) {
+                    let isConn = syncManager.isDirectTCPConnected || !syncManager.connectedPeers.isEmpty
+                    Circle()
+                        .fill(isConn ? Color.green : Color.orange)
+                        .frame(width: 7, height: 7)
+                    Image(systemName: "wifi")
+                        .font(.system(size: 11))
+                    if isConn {
+                        Text(syncManager.connectedPeers.first?.displayName ?? "Đã kết nối")
+                            .font(.system(size: 11, weight: .semibold))
+                    } else {
+                        Text("Đồng Bộ Wi-Fi")
+                            .font(.system(size: 11))
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.platformControlBackground)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
             
             // Batch Actions when multiple items are selected
             if !vm.selectedBookIDs.isEmpty {
