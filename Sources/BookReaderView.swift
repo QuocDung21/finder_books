@@ -114,14 +114,15 @@ struct BookReaderView: View {
             // Right Group: Controls
             HStack(spacing: 6) {
                 // Layout Mode
-                Picker("Chế độ xem", selection: $displayMode) {
+                Picker("", selection: $displayMode) {
                     Image(systemName: "rectangle.portrait.and.arrow.forward").tag(PDFDisplayMode.singlePageContinuous)
                     Image(systemName: "doc.text").tag(PDFDisplayMode.singlePage)
                     Image(systemName: "book.pages").tag(PDFDisplayMode.twoUpContinuous)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 85)
+                .labelsHidden()
                 .controlSize(.small)
+                .help("Chế độ xem: Cuộn liên tục / Từng trang / Hai trang mở")
                 
                 // Zoom
                 HStack(spacing: 2) {

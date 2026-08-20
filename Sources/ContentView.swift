@@ -96,12 +96,13 @@ struct ContentView: View {
                 
                 // 2. View Mode (Grid / List)
                 ToolbarItem(placement: .automatic) {
-                    Picker("Xem", selection: $libraryVM.viewMode) {
+                    Picker("", selection: $libraryVM.viewMode) {
                         ForEach(LibraryViewMode.allCases) { mode in
                             Image(systemName: mode.icon).tag(mode)
                         }
                     }
                     .pickerStyle(.segmented)
+                    .labelsHidden()
                     .frame(width: 60)
                 }
                 
