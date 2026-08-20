@@ -322,12 +322,49 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         
         self.activeTransfer = FileTransferStatus(
             filename: filename,
-            progress: 0.05,
+            progress: 0.2,
             isReceiving: false,
             statusText: "Đang gửi sang \(targetName)..."
         )
         
-        if let peer = targetPeer ?? connectedPeers.first {
+        // 1. Direct TCP Socket Transfer
+        if isDirectTCPConnected {
+            do {
+                let fileData = try Data(contentsOf: url)
+                let payload = LiveDrawingPayload(
+                    action: .transferBookFile,
+                    stroke: nil,
+                    pageIndex: nil,
+                    allStrokes: nil,
+                    catalog: nil,
+                    targetBookName: nil,
+                    fileName: filename,
+                    fileData: fileData,
+                    senderName: myPeerID.displayName
+                )
+                sendPayload(payload)
+                
+                self.activeTransfer = FileTransferStatus(
+                    filename: filename,
+                    progress: 1.0,
+                    isReceiving: false,
+                    statusText: "Đã gửi thành công sang \(targetName)!"
+                )
+                Task {
+                    try? await Task.sleep(nanoseconds: 3_500_000_000)
+                    self.activeTransfer = nil
+                }
+            } catch {
+                self.activeTransfer = FileTransferStatus(
+                    filename: filename,
+                    progress: 0.0,
+                    isReceiving: false,
+                    statusText: "Lỗi đọc file: \(error.localizedDescription)"
+                )
+            }
+        }
+        // 2. Multipeer Stream Transfer
+        else if let peer = targetPeer ?? connectedPeers.first {
             let progress = session.sendResource(at: url, withName: filename, toPeer: peer) { [weak self] error in
                 Task { @MainActor in
                     if let error = error {
@@ -513,6 +550,41 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         case .syncReadingProgress:
             if let bName = payload.targetBookName, let page = payload.pageIndex {
                 self.remoteReadingStatus = (bookName: bName, pageIndex: page)
+            }
+            
+        case .transferBookFile:
+            if let data = payload.fileData, let filename = payload.fileName {
+                let fileManager = FileManager.default
+                let documentsDir: URL
+                #if os(macOS)
+                documentsDir = fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
+                #elseif os(iOS)
+                documentsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+                #endif
+                
+                let destURL = documentsDir.appendingPathComponent(filename)
+                do {
+                    if fileManager.fileExists(atPath: destURL.path) {
+                        try fileManager.removeItem(at: destURL)
+                    }
+                    try data.write(to: destURL, options: .atomic)
+                    
+                    self.activeTransfer = FileTransferStatus(
+                        filename: filename,
+                        progress: 1.0,
+                        isReceiving: true,
+                        statusText: "Đã nhận thành công \(filename)!"
+                    )
+                    self.newlyReceivedBookURL = destURL
+                    self.onBookReceived?(destURL)
+                    
+                    Task {
+                        try? await Task.sleep(nanoseconds: 4_000_000_000)
+                        self.activeTransfer = nil
+                    }
+                } catch {
+                    print("Failed to save book data: \(error)")
+                }
             }
             
         case .requestBook:

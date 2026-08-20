@@ -51,6 +51,7 @@ enum LiveSyncAction: String, Codable {
     case requestBook = "request_book"
     case openBookOnPeer = "open_book_on_peer"
     case syncReadingProgress = "sync_reading_progress"
+    case transferBookFile = "transfer_book_file"
 }
 
 // MARK: - Universal Sync Packet
@@ -61,6 +62,8 @@ struct LiveDrawingPayload: Codable {
     var allStrokes: [LiveInkStroke]?
     var catalog: [BookMetadataPayload]?
     var targetBookName: String?
+    var fileName: String?
+    var fileData: Data?
     var senderName: String
 }
 
