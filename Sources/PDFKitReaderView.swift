@@ -4,7 +4,7 @@ import PDFKit
 #if os(macOS)
 import AppKit
 
-// MARK: - Native macOS Inking PDFView (Pixel-Perfect with pdfView.convert)
+// MARK: - Native macOS PDFView with Live Annotation Inking Engine
 class InkingPDFView: PDFView {
     var isDrawingEnabled: Bool = false
     var activeColor: NSColor = .red
@@ -14,75 +14,18 @@ class InkingPDFView: PDFView {
     private var currentPoints: [InkPoint] = []
     private var currentPageForDrawing: PDFPage? = nil
     private var currentPageIndexForDrawing: Int = 0
+    private var activeDragOverlayPath: NSBezierPath? = nil
     
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         
-        guard let doc = document else { return }
-        let syncManager = LiveCompanionSyncManager.shared
-        
-        // Draw all finished synchronized strokes for visible pages
-        let visiblePages = self.visiblePages
-        for page in visiblePages {
-            let pageIndex = doc.index(for: page)
-            let pageBounds = page.bounds(for: .cropBox)
-            guard let strokes = syncManager.pageStrokes[pageIndex], !strokes.isEmpty else { continue }
-            
-            for stroke in strokes {
-                guard let first = stroke.points.first else { continue }
-                let firstPdfPoint = CGPoint(
-                    x: first.x * pageBounds.width + pageBounds.minX,
-                    y: first.y * pageBounds.height + pageBounds.minY
-                )
-                let firstScreenPoint = self.convert(firstPdfPoint, from: page)
-                
-                let path = NSBezierPath()
-                path.lineWidth = stroke.lineWidth
-                path.lineCapStyle = .round
-                path.lineJoinStyle = .round
-                path.move(to: firstScreenPoint)
-                
-                for pt in stroke.points.dropFirst() {
-                    let pdfPt = CGPoint(
-                        x: pt.x * pageBounds.width + pageBounds.minX,
-                        y: pt.y * pageBounds.height + pageBounds.minY
-                    )
-                    let screenPt = self.convert(pdfPt, from: page)
-                    path.line(to: screenPt)
-                }
-                
-                let col = NSColor(hex: stroke.colorHex) ?? .red
-                col.withAlphaComponent(stroke.opacity).setStroke()
-                path.stroke()
-            }
-        }
-        
-        // Draw current in-progress live drawing stroke
-        if !currentPoints.isEmpty, let page = currentPageForDrawing, let first = currentPoints.first {
-            let pageBounds = page.bounds(for: .cropBox)
-            let firstPdfPoint = CGPoint(
-                x: first.x * pageBounds.width + pageBounds.minX,
-                y: first.y * pageBounds.height + pageBounds.minY
-            )
-            let firstScreenPoint = self.convert(firstPdfPoint, from: page)
-            
-            let path = NSBezierPath()
+        // Render in-progress active stroke overlay while user is dragging
+        if isDrawingEnabled, let path = activeDragOverlayPath {
+            let col = activeColor.withAlphaComponent(isHighlighter ? 0.35 : 1.0)
+            col.setStroke()
             path.lineWidth = activeLineWidth
             path.lineCapStyle = .round
             path.lineJoinStyle = .round
-            path.move(to: firstScreenPoint)
-            
-            for pt in currentPoints.dropFirst() {
-                let pdfPt = CGPoint(
-                    x: pt.x * pageBounds.width + pageBounds.minX,
-                    y: pt.y * pageBounds.height + pageBounds.minY
-                )
-                let screenPt = self.convert(pdfPt, from: page)
-                path.line(to: screenPt)
-            }
-            
-            let col = activeColor.withAlphaComponent(isHighlighter ? 0.35 : 1.0)
-            col.setStroke()
             path.stroke()
         }
     }
@@ -107,6 +50,9 @@ class InkingPDFView: PDFView {
         currentPageForDrawing = page
         currentPageIndexForDrawing = doc.index(for: page)
         currentPoints = [InkPoint(x: nx, y: ny)]
+        
+        activeDragOverlayPath = NSBezierPath()
+        activeDragOverlayPath?.move(to: loc)
         needsDisplay = true
     }
     
@@ -123,13 +69,15 @@ class InkingPDFView: PDFView {
         let ny = max(0, min(1, (pdfPoint.y - pageBounds.minY) / pageBounds.height))
         
         currentPoints.append(InkPoint(x: nx, y: ny))
+        activeDragOverlayPath?.line(to: loc)
         needsDisplay = true
     }
     
     override func mouseUp(with event: NSEvent) {
-        guard isDrawingEnabled, currentPoints.count > 1 else {
+        guard isDrawingEnabled, currentPoints.count > 1, let page = currentPageForDrawing else {
             currentPoints.removeAll()
             currentPageForDrawing = nil
+            activeDragOverlayPath = nil
             needsDisplay = true
             super.mouseUp(with: event)
             return
@@ -146,7 +94,33 @@ class InkingPDFView: PDFView {
         
         currentPoints.removeAll()
         currentPageForDrawing = nil
+        activeDragOverlayPath = nil
+        
+        // Broadcast and commit annotation to page
         LiveCompanionSyncManager.shared.broadcastNewStroke(stroke)
+        PDFAnnotationHelper.applyStroke(stroke, to: page)
+        needsDisplay = true
+    }
+    
+    func syncAllAnnotations() {
+        guard let doc = document else { return }
+        let syncManager = LiveCompanionSyncManager.shared
+        
+        for i in 0..<doc.pageCount {
+            guard let page = doc.page(at: i) else { continue }
+            // Remove existing ink annotations
+            let existingInk = page.annotations.filter { $0.type == "Ink" }
+            for ann in existingInk {
+                page.removeAnnotation(ann)
+            }
+            
+            // Re-apply strokes from sync manager
+            if let strokes = syncManager.pageStrokes[i] {
+                for s in strokes {
+                    PDFAnnotationHelper.applyStroke(s, to: page)
+                }
+            }
+        }
         needsDisplay = true
     }
 }
@@ -181,6 +155,7 @@ struct PDFKitReaderView: NSViewRepresentable {
                 if currentPageIndex < doc.pageCount, let page = doc.page(at: currentPageIndex) {
                     pdfView.go(to: page)
                 }
+                pdfView.syncAllAnnotations()
             }
         }
         
@@ -200,9 +175,9 @@ struct PDFKitReaderView: NSViewRepresentable {
         
         NotificationCenter.default.addObserver(
             context.coordinator,
-            selector: #selector(Coordinator.redrawOverlay),
-            name: .PDFViewScaleChanged,
-            object: pdfView
+            selector: #selector(Coordinator.strokesUpdated),
+            name: NSNotification.Name("LiveCompanionStrokesUpdated"),
+            object: nil
         )
         
         context.coordinator.pdfView = pdfView
@@ -221,6 +196,7 @@ struct PDFKitReaderView: NSViewRepresentable {
             if let doc = PDFDocument(url: url) {
                 pdfView.document = doc
                 self.totalPages = doc.pageCount
+                pdfView.syncAllAnnotations()
             }
         }
         
@@ -244,8 +220,6 @@ struct PDFKitReaderView: NSViewRepresentable {
            let targetPage = doc.page(at: currentPageIndex) {
             pdfView.go(to: targetPage)
         }
-        
-        pdfView.needsDisplay = true
     }
     
     func makeCoordinator() -> Coordinator {
@@ -260,8 +234,8 @@ struct PDFKitReaderView: NSViewRepresentable {
             self.parent = parent
         }
         
-        @objc func redrawOverlay() {
-            pdfView?.needsDisplay = true
+        @objc func strokesUpdated() {
+            pdfView?.syncAllAnnotations()
         }
         
         @objc func pageChanged(_ notification: Notification) {
@@ -275,7 +249,6 @@ struct PDFKitReaderView: NSViewRepresentable {
                     self.parent.currentPageIndex = index
                 }
             }
-            self.pdfView?.needsDisplay = true
         }
         
         @objc func selectionChanged(_ notification: Notification) {
@@ -295,7 +268,7 @@ struct PDFKitReaderView: NSViewRepresentable {
 #elseif os(iOS)
 import UIKit
 
-// MARK: - Native iOS Inking PDFView (Pixel-Perfect with pdfView.convert & Apple Pencil)
+// MARK: - Native iOS PDFView with Live Annotation Inking Engine & Apple Pencil
 class InkingPDFView: PDFView {
     var isDrawingEnabled: Bool = false
     var activeColor: UIColor = .red
@@ -305,9 +278,10 @@ class InkingPDFView: PDFView {
     private var currentPoints: [InkPoint] = []
     private var currentPageForDrawing: PDFPage? = nil
     private var currentPageIndexForDrawing: Int = 0
+    private var activeDragOverlayPath: UIBezierPath? = nil
     
-    private lazy var overlayView: InkingOverlayDrawingView = {
-        let view = InkingOverlayDrawingView(parentPDFView: self)
+    private lazy var overlayView: InkingTouchOverlayView = {
+        let view = InkingTouchOverlayView(parentPDFView: self)
         view.backgroundColor = .clear
         view.isOpaque = false
         view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -316,15 +290,12 @@ class InkingPDFView: PDFView {
     
     override init(frame: CGRect) {
         super.init(frame: frame)
-        setupOverlay()
+        addSubview(overlayView)
+        overlayView.frame = bounds
     }
     
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        setupOverlay()
-    }
-    
-    private func setupOverlay() {
         addSubview(overlayView)
         overlayView.frame = bounds
     }
@@ -332,21 +303,39 @@ class InkingPDFView: PDFView {
     override func layoutSubviews() {
         super.layoutSubviews()
         overlayView.frame = bounds
-        overlayView.setNeedsDisplay()
     }
     
-    func redrawInking() {
+    func syncAllAnnotations() {
+        guard let doc = document else { return }
+        let syncManager = LiveCompanionSyncManager.shared
+        
+        for i in 0..<doc.pageCount {
+            guard let page = doc.page(at: i) else { continue }
+            // Remove existing ink annotations
+            let existingInk = page.annotations.filter { $0.type == "Ink" }
+            for ann in existingInk {
+                page.removeAnnotation(ann)
+            }
+            
+            // Re-apply strokes from sync manager
+            if let strokes = syncManager.pageStrokes[i] {
+                for s in strokes {
+                    PDFAnnotationHelper.applyStroke(s, to: page)
+                }
+            }
+        }
         overlayView.setNeedsDisplay()
     }
 }
 
-// MARK: - iOS Drawing Overlay View
-class InkingOverlayDrawingView: UIView {
+// MARK: - iOS Touch & In-Progress Preview Overlay
+class InkingTouchOverlayView: UIView {
     weak var parentPDFView: InkingPDFView?
     
     private var currentPoints: [InkPoint] = []
     private var currentPageForDrawing: PDFPage? = nil
     private var currentPageIndexForDrawing: Int = 0
+    private var activeDragOverlayPath: UIBezierPath? = nil
     
     init(parentPDFView: InkingPDFView) {
         self.parentPDFView = parentPDFView
@@ -365,72 +354,14 @@ class InkingOverlayDrawingView: UIView {
     
     override func draw(_ rect: CGRect) {
         super.draw(rect)
-        guard let parent = parentPDFView, let doc = parent.document else { return }
-        let syncManager = LiveCompanionSyncManager.shared
+        guard let parent = parentPDFView, parent.isDrawingEnabled, let path = activeDragOverlayPath else { return }
         
-        let visiblePages = parent.visiblePages
-        for page in visiblePages {
-            let pageIndex = doc.index(for: page)
-            let pageBounds = page.bounds(for: .cropBox)
-            guard let strokes = syncManager.pageStrokes[pageIndex], !strokes.isEmpty else { continue }
-            
-            for stroke in strokes {
-                guard let first = stroke.points.first else { continue }
-                let firstPdfPoint = CGPoint(
-                    x: first.x * pageBounds.width + pageBounds.minX,
-                    y: first.y * pageBounds.height + pageBounds.minY
-                )
-                let firstScreenPoint = parent.convert(firstPdfPoint, from: page)
-                
-                let path = UIBezierPath()
-                path.lineWidth = stroke.lineWidth
-                path.lineCapStyle = .round
-                path.lineJoinStyle = .round
-                path.move(to: firstScreenPoint)
-                
-                for pt in stroke.points.dropFirst() {
-                    let pdfPt = CGPoint(
-                        x: pt.x * pageBounds.width + pageBounds.minX,
-                        y: pt.y * pageBounds.height + pageBounds.minY
-                    )
-                    let screenPt = parent.convert(pdfPt, from: page)
-                    path.addLine(to: screenPt)
-                }
-                
-                let col = UIColor(hex: stroke.colorHex) ?? .red
-                col.withAlphaComponent(stroke.opacity).setStroke()
-                path.stroke()
-            }
-        }
-        
-        // Draw in-progress active stroke
-        if !currentPoints.isEmpty, let page = currentPageForDrawing, let first = currentPoints.first {
-            let pageBounds = page.bounds(for: .cropBox)
-            let firstPdfPoint = CGPoint(
-                x: first.x * pageBounds.width + pageBounds.minX,
-                y: first.y * pageBounds.height + pageBounds.minY
-            )
-            let firstScreenPoint = parent.convert(firstPdfPoint, from: page)
-            
-            let path = UIBezierPath()
-            path.lineWidth = parent.activeLineWidth
-            path.lineCapStyle = .round
-            path.lineJoinStyle = .round
-            path.move(to: firstScreenPoint)
-            
-            for pt in currentPoints.dropFirst() {
-                let pdfPt = CGPoint(
-                    x: pt.x * pageBounds.width + pageBounds.minX,
-                    y: pt.y * pageBounds.height + pageBounds.minY
-                )
-                let screenPt = parent.convert(pdfPt, from: page)
-                path.addLine(to: screenPt)
-            }
-            
-            let col = parent.activeColor.withAlphaComponent(parent.isHighlighter ? 0.35 : 1.0)
-            col.setStroke()
-            path.stroke()
-        }
+        let col = parent.activeColor.withAlphaComponent(parent.isHighlighter ? 0.35 : 1.0)
+        col.setStroke()
+        path.lineWidth = parent.activeLineWidth
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        path.stroke()
     }
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -453,6 +384,9 @@ class InkingOverlayDrawingView: UIView {
         currentPageForDrawing = page
         currentPageIndexForDrawing = doc.index(for: page)
         currentPoints = [InkPoint(x: nx, y: ny)]
+        
+        activeDragOverlayPath = UIBezierPath()
+        activeDragOverlayPath?.move(to: touch.location(in: self))
         setNeedsDisplay()
     }
     
@@ -469,13 +403,15 @@ class InkingOverlayDrawingView: UIView {
         let ny = max(0, min(1, (pdfPoint.y - pageBounds.minY) / pageBounds.height))
         
         currentPoints.append(InkPoint(x: nx, y: ny))
+        activeDragOverlayPath?.addLine(to: touch.location(in: self))
         setNeedsDisplay()
     }
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let parent = parentPDFView, parent.isDrawingEnabled, currentPoints.count > 1 else {
+        guard let parent = parentPDFView, parent.isDrawingEnabled, currentPoints.count > 1, let page = currentPageForDrawing else {
             currentPoints.removeAll()
             currentPageForDrawing = nil
+            activeDragOverlayPath = nil
             setNeedsDisplay()
             super.touchesEnded(touches, with: event)
             return
@@ -492,13 +428,18 @@ class InkingOverlayDrawingView: UIView {
         
         currentPoints.removeAll()
         currentPageForDrawing = nil
+        activeDragOverlayPath = nil
+        
+        // Broadcast and commit annotation directly onto the PDF page
         LiveCompanionSyncManager.shared.broadcastNewStroke(stroke)
+        PDFAnnotationHelper.applyStroke(stroke, to: page)
         setNeedsDisplay()
     }
     
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         currentPoints.removeAll()
         currentPageForDrawing = nil
+        activeDragOverlayPath = nil
         setNeedsDisplay()
         super.touchesCancelled(touches, with: event)
     }
@@ -534,6 +475,7 @@ struct PDFKitReaderView: UIViewRepresentable {
                 if currentPageIndex < doc.pageCount, let page = doc.page(at: currentPageIndex) {
                     pdfView.go(to: page)
                 }
+                pdfView.syncAllAnnotations()
             }
         }
         
@@ -553,9 +495,9 @@ struct PDFKitReaderView: UIViewRepresentable {
         
         NotificationCenter.default.addObserver(
             context.coordinator,
-            selector: #selector(Coordinator.redrawOverlay),
-            name: .PDFViewScaleChanged,
-            object: pdfView
+            selector: #selector(Coordinator.strokesUpdated),
+            name: NSNotification.Name("LiveCompanionStrokesUpdated"),
+            object: nil
         )
         
         context.coordinator.pdfView = pdfView
@@ -574,6 +516,7 @@ struct PDFKitReaderView: UIViewRepresentable {
             if let doc = PDFDocument(url: url) {
                 pdfView.document = doc
                 self.totalPages = doc.pageCount
+                pdfView.syncAllAnnotations()
             }
         }
         
@@ -597,8 +540,6 @@ struct PDFKitReaderView: UIViewRepresentable {
            let targetPage = doc.page(at: currentPageIndex) {
             pdfView.go(to: targetPage)
         }
-        
-        pdfView.redrawInking()
     }
     
     func makeCoordinator() -> Coordinator {
@@ -613,8 +554,8 @@ struct PDFKitReaderView: UIViewRepresentable {
             self.parent = parent
         }
         
-        @objc func redrawOverlay() {
-            pdfView?.redrawInking()
+        @objc func strokesUpdated() {
+            pdfView?.syncAllAnnotations()
         }
         
         @objc func pageChanged(_ notification: Notification) {
@@ -628,7 +569,6 @@ struct PDFKitReaderView: UIViewRepresentable {
                     self.parent.currentPageIndex = index
                 }
             }
-            self.pdfView?.redrawInking()
         }
         
         @objc func selectionChanged(_ notification: Notification) {
@@ -645,3 +585,61 @@ struct PDFKitReaderView: UIViewRepresentable {
     }
 }
 #endif
+
+// MARK: - Cross-Platform PDFAnnotation Inking Helper
+struct PDFAnnotationHelper {
+    static func applyStroke(_ stroke: LiveInkStroke, to page: PDFPage) {
+        let pageBounds = page.bounds(for: .cropBox)
+        guard let first = stroke.points.first else { return }
+        
+        let firstPt = CGPoint(
+            x: first.x * pageBounds.width + pageBounds.minX,
+            y: first.y * pageBounds.height + pageBounds.minY
+        )
+        
+        #if os(macOS)
+        let path = NSBezierPath()
+        path.lineWidth = stroke.lineWidth
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        path.move(to: firstPt)
+        
+        for pt in stroke.points.dropFirst() {
+            let p = CGPoint(
+                x: pt.x * pageBounds.width + pageBounds.minX,
+                y: pt.y * pageBounds.height + pageBounds.minY
+            )
+            path.line(to: p)
+        }
+        
+        let inkAnnotation = PDFAnnotation(bounds: pageBounds, forType: .ink, withProperties: nil)
+        inkAnnotation.add(path)
+        if let col = NSColor(hex: stroke.colorHex) {
+            inkAnnotation.color = col.withAlphaComponent(stroke.opacity)
+        }
+        page.addAnnotation(inkAnnotation)
+        
+        #elseif os(iOS)
+        let path = UIBezierPath()
+        path.lineWidth = stroke.lineWidth
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        path.move(to: firstPt)
+        
+        for pt in stroke.points.dropFirst() {
+            let p = CGPoint(
+                x: pt.x * pageBounds.width + pageBounds.minX,
+                y: pt.y * pageBounds.height + pageBounds.minY
+            )
+            path.addLine(to: p)
+        }
+        
+        let inkAnnotation = PDFAnnotation(bounds: pageBounds, forType: .ink, withProperties: nil)
+        inkAnnotation.add(path)
+        if let col = UIColor(hex: stroke.colorHex) {
+            inkAnnotation.color = col.withAlphaComponent(stroke.opacity)
+        }
+        page.addAnnotation(inkAnnotation)
+        #endif
+    }
+}

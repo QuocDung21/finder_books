@@ -526,12 +526,14 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
                 if !list.contains(where: { $0.id == stroke.id }) {
                     list.append(stroke)
                     self.pageStrokes[stroke.pageIndex] = list
+                    NotificationCenter.default.post(name: NSNotification.Name("LiveCompanionStrokesUpdated"), object: nil)
                 }
             }
             
         case .clearPage:
             if let page = payload.pageIndex {
                 self.pageStrokes[page] = []
+                NotificationCenter.default.post(name: NSNotification.Name("LiveCompanionStrokesUpdated"), object: nil)
             }
             
         case .jumpToPage:
@@ -548,6 +550,7 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
                         self.pageStrokes[s.pageIndex] = list
                     }
                 }
+                NotificationCenter.default.post(name: NSNotification.Name("LiveCompanionStrokesUpdated"), object: nil)
             }
             
         case .syncCatalog:
