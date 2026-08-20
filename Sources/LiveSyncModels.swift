@@ -119,3 +119,60 @@ extension Color {
         #endif
     }
 }
+
+#if os(macOS)
+import AppKit
+extension NSColor {
+    convenience init?(hex: String) {
+        let cleanHex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        guard Scanner(string: cleanHex).scanHexInt64(&int) else { return nil }
+        if cleanHex.count == 6 {
+            let r = CGFloat((int >> 16) & 0xFF) / 255.0
+            let g = CGFloat((int >> 8) & 0xFF) / 255.0
+            let b = CGFloat(int & 0xFF) / 255.0
+            self.init(red: r, green: g, blue: b, alpha: 1.0)
+        } else {
+            return nil
+        }
+    }
+    
+    func toHex() -> String? {
+        guard let components = usingColorSpace(.sRGB) else { return nil }
+        let r = Int(components.redComponent * 255.0)
+        let g = Int(components.greenComponent * 255.0)
+        let b = Int(components.blueComponent * 255.0)
+        return String(format: "#%02X%02X%02X", r, g, b)
+    }
+}
+#elseif os(iOS)
+import UIKit
+extension UIColor {
+    convenience init?(hex: String) {
+        let cleanHex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        guard Scanner(string: cleanHex).scanHexInt64(&int) else { return nil }
+        if cleanHex.count == 6 {
+            let r = CGFloat((int >> 16) & 0xFF) / 255.0
+            let g = CGFloat((int >> 8) & 0xFF) / 255.0
+            let b = CGFloat(int & 0xFF) / 255.0
+            self.init(red: r, green: g, blue: b, alpha: 1.0)
+        } else {
+            return nil
+        }
+    }
+    
+    func toHex() -> String? {
+        var r: CGFloat = 0
+        var g: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
+        if getRed(&r, green: &g, blue: &b, alpha: &a) {
+            return String(format: "#%02X%02X%02X", Int(r * 255), Int(g * 255), Int(b * 255))
+        }
+        return nil
+    }
+}
+#endif
+
+

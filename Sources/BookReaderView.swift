@@ -56,27 +56,20 @@ struct BookReaderView: View {
                             Divider()
                         }
 
-                        // Center: PDF Canvas with Live Inking Overlay
-                        ZStack {
-                            PDFKitReaderView(
-                                url: bookURL,
-                                currentPageIndex: $currentPageIndex,
-                                totalPages: $totalPages,
-                                displayMode: $displayMode,
-                                scaleFactor: $scaleFactor,
-                                autoScales: $autoScales,
-                                selectedText: $selectedText
-                            )
-                            
-                            // Real-time Inking Layer (Mac ↔ iPad P2P)
-                            LiveInkingCanvasView(
-                                pageIndex: currentPageIndex,
-                                isDrawingEnabled: isPenModeActive,
-                                activeColor: isHighlighter ? .yellow : activePenColor,
-                                activeLineWidth: isHighlighter ? 14.0 : activePenWidth,
-                                isHighlighter: isHighlighter
-                            )
-                        }
+                        // Center: PDF Canvas with Native Per-Page Inking Overlay
+                        PDFKitReaderView(
+                            url: bookURL,
+                            currentPageIndex: $currentPageIndex,
+                            totalPages: $totalPages,
+                            displayMode: $displayMode,
+                            scaleFactor: $scaleFactor,
+                            autoScales: $autoScales,
+                            selectedText: $selectedText,
+                            isDrawingEnabled: isPenModeActive,
+                            activeColor: isHighlighter ? .yellow : activePenColor,
+                            activeLineWidth: isHighlighter ? 14.0 : activePenWidth,
+                            isHighlighter: isHighlighter
+                        )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                         // Right: Pinned AI Dictionary & Translation Side Panel
