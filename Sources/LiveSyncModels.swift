@@ -30,20 +30,47 @@ struct LiveInkStroke: Identifiable, Codable, Equatable {
     }
 }
 
-// MARK: - Live Drawing Sync Packet
+// MARK: - Book Metadata Summary for Catalog Sync
+struct BookMetadataPayload: Identifiable, Codable, Equatable {
+    var id: String { filename }
+    var filename: String
+    var fileSizeMB: Double
+    var pageCount: Int
+    var categoryName: String?
+}
+
+// MARK: - Live Sync Action Types
 enum LiveSyncAction: String, Codable {
     case addStroke = "add_stroke"
     case clearPage = "clear_page"
     case jumpToPage = "jump_to_page"
     case syncAllStrokes = "sync_all"
+    
+    // Library & Book File Sync
+    case syncCatalog = "sync_catalog"
+    case requestBook = "request_book"
+    case openBookOnPeer = "open_book_on_peer"
+    case syncReadingProgress = "sync_reading_progress"
 }
 
+// MARK: - Universal Sync Packet
 struct LiveDrawingPayload: Codable {
     var action: LiveSyncAction
     var stroke: LiveInkStroke?
     var pageIndex: Int?
     var allStrokes: [LiveInkStroke]?
+    var catalog: [BookMetadataPayload]?
+    var targetBookName: String?
     var senderName: String
+}
+
+// MARK: - File Transfer Progress State
+struct FileTransferStatus: Identifiable, Equatable {
+    var id: String { filename }
+    var filename: String
+    var progress: Double // 0.0 to 1.0
+    var isReceiving: Bool
+    var statusText: String
 }
 
 // MARK: - Hex Color Helper

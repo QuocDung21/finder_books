@@ -316,6 +316,22 @@ struct BookReaderView: View {
                 .controlSize(.small)
                 .help("Mở Sổ Tay Từ Vựng")
                 
+                // Direct Send Book to Peer Button
+                if let peer = syncManager.connectedPeers.first {
+                    Button {
+                        syncManager.sendBookFile(url: bookURL)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "paperplane.fill")
+                            Text("Gửi Sang \(peer.displayName)")
+                                .font(.system(size: 10))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Gửi file PDF này sang \(peer.displayName) qua Wi-Fi")
+                }
+                
                 Divider()
                     .frame(height: 16)
 

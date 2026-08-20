@@ -52,9 +52,6 @@ struct ContentView: View {
                         onSelectBookToSplit: { bookURL in
                             splitterVM.loadPDF(from: bookURL)
                             showSplitterModal = true
-                        },
-                        onOpenSplitterDirectly: {
-                            showSplitterModal = true
                         }
                     )
                 }

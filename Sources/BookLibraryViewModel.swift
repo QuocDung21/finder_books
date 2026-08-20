@@ -449,6 +449,11 @@ class BookLibraryViewModel: ObservableObject {
         #endif
     }
     
+    func deleteBookAction(book: BookItem) {
+        try? service.deleteBook(at: book.url)
+        refreshLibrary()
+    }
+    
     // MARK: - Scan & Sync Source Folder Prompt
     func promptScanAndSyncSourceFolder() {
         guard libraryRootURL != nil else {

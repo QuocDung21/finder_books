@@ -3,7 +3,7 @@ import MultipeerConnectivity
 import SwiftUI
 
 // MARK: - Peer Connection State
-enum PeerSyncState {
+enum PeerSyncState: Equatable {
     case disconnected
     case searching
     case connecting(peerName: String)
@@ -19,7 +19,7 @@ enum PeerSyncState {
     }
 }
 
-// MARK: - Multipeer Live Companion Sync Manager
+// MARK: - Multipeer Live Companion & Library Sync Manager
 class LiveCompanionSyncManager: NSObject, ObservableObject {
     static let shared = LiveCompanionSyncManager()
     
@@ -36,8 +36,16 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
     // Inked strokes storage (Page Index -> [LiveInkStroke])
     @Published var pageStrokes: [Int: [LiveInkStroke]] = [:]
     
-    // External Page Jump callback
+    // File Transfer State
+    @Published var activeTransfer: FileTransferStatus? = nil
+    @Published var newlyReceivedBookURL: URL? = nil
+    @Published var remoteCatalog: [BookMetadataPayload] = []
+    @Published var remoteReadingStatus: (bookName: String, pageIndex: Int)? = nil
+    
+    // Callbacks
     var onRemotePageJump: ((Int) -> Void)? = nil
+    var onRemoteOpenBookRequest: ((String, Int) -> Void)? = nil
+    var onBookReceived: ((URL) -> Void)? = nil
     
     override init() {
         #if os(macOS)
@@ -84,15 +92,121 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
         connectionState = .disconnected
     }
     
-    // MARK: - Send Drawing Stroke (Real-Time Live Stream)
+    // MARK: - 1. Send Book File Directly (AirDrop-like P2P Stream)
+    @MainActor
+    func sendBookFile(url: URL, to targetPeer: MCPeerID? = nil) {
+        guard let peer = targetPeer ?? connectedPeers.first else {
+            print("No peer available to send book")
+            return
+        }
+        
+        let filename = url.lastPathComponent
+        self.activeTransfer = FileTransferStatus(
+            filename: filename,
+            progress: 0.05,
+            isReceiving: false,
+            statusText: "Đang gửi sang \(peer.displayName)..."
+        )
+        
+        let progress = session.sendResource(at: url, withName: filename, toPeer: peer) { [weak self] error in
+            Task { @MainActor in
+                if let error = error {
+                    print("Failed to send book: \(error)")
+                    self?.activeTransfer = FileTransferStatus(
+                        filename: filename,
+                        progress: 0.0,
+                        isReceiving: false,
+                        statusText: "Lỗi gửi: \(error.localizedDescription)"
+                    )
+                } else {
+                    self?.activeTransfer = FileTransferStatus(
+                        filename: filename,
+                        progress: 1.0,
+                        isReceiving: false,
+                        statusText: "Đã gửi thành công sang \(peer.displayName)!"
+                    )
+                }
+                
+                // Clear after 4 seconds
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                self?.activeTransfer = nil
+            }
+        }
+        
+        // Observe progress
+        if let p = progress {
+            Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+                Task { @MainActor in
+                    if p.isFinished || p.isCancelled {
+                        timer.invalidate()
+                    } else {
+                        self.activeTransfer?.progress = p.fractionCompleted
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - 2. Broadcast Reading Progress / Request Open on Peer
+    @MainActor
+    func requestOpenBookOnPeer(bookName: String, pageIndex: Int) {
+        let payload = LiveDrawingPayload(
+            action: .openBookOnPeer,
+            stroke: nil,
+            pageIndex: pageIndex,
+            allStrokes: nil,
+            catalog: nil,
+            targetBookName: bookName,
+            senderName: myPeerID.displayName
+        )
+        sendPayload(payload)
+    }
+    
+    @MainActor
+    func broadcastReadingProgress(bookName: String, pageIndex: Int) {
+        let payload = LiveDrawingPayload(
+            action: .syncReadingProgress,
+            stroke: nil,
+            pageIndex: pageIndex,
+            allStrokes: nil,
+            catalog: nil,
+            targetBookName: bookName,
+            senderName: myPeerID.displayName
+        )
+        sendPayload(payload)
+    }
+    
+    // MARK: - 3. Broadcast Library Catalog Summary
+    @MainActor
+    func broadcastCatalog(books: [BookItem]) {
+        let list = books.map {
+            BookMetadataPayload(
+                filename: $0.name,
+                fileSizeMB: $0.fileSizeMB,
+                pageCount: $0.pageCount,
+                categoryName: $0.folderName
+            )
+        }
+        
+        let payload = LiveDrawingPayload(
+            action: .syncCatalog,
+            stroke: nil,
+            pageIndex: nil,
+            allStrokes: nil,
+            catalog: list,
+            targetBookName: nil,
+            senderName: myPeerID.displayName
+        )
+        sendPayload(payload)
+    }
+    
+    // MARK: - 4. Live Drawing Stroke Stream
     @MainActor
     func broadcastNewStroke(_ stroke: LiveInkStroke) {
-        // 1. Add locally
         var current = pageStrokes[stroke.pageIndex] ?? []
         current.append(stroke)
         pageStrokes[stroke.pageIndex] = current
         
-        // 2. Broadcast to connected peers
         guard !session.connectedPeers.isEmpty else { return }
         
         let payload = LiveDrawingPayload(
@@ -100,13 +214,13 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
             stroke: stroke,
             pageIndex: stroke.pageIndex,
             allStrokes: nil,
+            catalog: nil,
+            targetBookName: nil,
             senderName: myPeerID.displayName
         )
-        
         sendPayload(payload)
     }
     
-    // MARK: - Broadcast Clear Page
     @MainActor
     func broadcastClearPage(pageIndex: Int) {
         pageStrokes[pageIndex] = []
@@ -116,12 +230,13 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
             stroke: nil,
             pageIndex: pageIndex,
             allStrokes: nil,
+            catalog: nil,
+            targetBookName: nil,
             senderName: myPeerID.displayName
         )
         sendPayload(payload)
     }
     
-    // MARK: - Broadcast Page Jump
     @MainActor
     func broadcastPageJump(pageIndex: Int) {
         let payload = LiveDrawingPayload(
@@ -129,6 +244,8 @@ class LiveCompanionSyncManager: NSObject, ObservableObject {
             stroke: nil,
             pageIndex: pageIndex,
             allStrokes: nil,
+            catalog: nil,
+            targetBookName: nil,
             senderName: myPeerID.displayName
         )
         sendPayload(payload)
@@ -154,6 +271,7 @@ extension LiveCompanionSyncManager: MCSessionDelegate {
             switch state {
             case .connected:
                 self.connectionState = .connected(peerName: peerID.displayName)
+                
                 // Sync all current strokes with new peer
                 let allFlatStrokes = self.pageStrokes.values.flatMap { $0 }
                 let payload = LiveDrawingPayload(
@@ -161,6 +279,8 @@ extension LiveCompanionSyncManager: MCSessionDelegate {
                     stroke: nil,
                     pageIndex: nil,
                     allStrokes: allFlatStrokes,
+                    catalog: nil,
+                    targetBookName: nil,
                     senderName: self.myPeerID.displayName
                 )
                 self.sendPayload(payload)
@@ -214,19 +334,106 @@ extension LiveCompanionSyncManager: MCSessionDelegate {
                         }
                     }
                 }
+                
+            case .syncCatalog:
+                if let cat = payload.catalog {
+                    self.remoteCatalog = cat
+                }
+                
+            case .openBookOnPeer:
+                if let bName = payload.targetBookName, let page = payload.pageIndex {
+                    self.onRemoteOpenBookRequest?(bName, page)
+                }
+                
+            case .syncReadingProgress:
+                if let bName = payload.targetBookName, let page = payload.pageIndex {
+                    self.remoteReadingStatus = (bookName: bName, pageIndex: page)
+                }
+                
+            case .requestBook:
+                break
             }
         }
     }
     
     func session(_ session: MCSession, didReceive stream: InputStream, withName streamName: String, fromPeer peerID: MCPeerID) {}
-    func session(_ session: MCSession, didStartReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID, with progress: Progress) {}
-    func session(_ session: MCSession, didFinishReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID, at localURL: URL?, withError error: Error?) {}
+    
+    // MARK: - Incoming Resource / File Transfer Callbacks
+    func session(_ session: MCSession, didStartReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID, with progress: Progress) {
+        Task { @MainActor in
+            self.activeTransfer = FileTransferStatus(
+                filename: resourceName,
+                progress: 0.05,
+                isReceiving: true,
+                statusText: "Đang nhận từ \(peerID.displayName)..."
+            )
+            
+            Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+                Task { @MainActor in
+                    if progress.isFinished || progress.isCancelled {
+                        timer.invalidate()
+                    } else {
+                        self.activeTransfer?.progress = progress.fractionCompleted
+                    }
+                }
+            }
+        }
+    }
+    
+    func session(_ session: MCSession, didFinishReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID, at localURL: URL?, withError error: Error?) {
+        Task { @MainActor in
+            if let error = error {
+                print("Error receiving resource: \(error)")
+                self.activeTransfer = FileTransferStatus(
+                    filename: resourceName,
+                    progress: 0.0,
+                    isReceiving: true,
+                    statusText: "Lỗi nhận file: \(error.localizedDescription)"
+                )
+                return
+            }
+            
+            guard let tempURL = localURL else { return }
+            
+            // Save received book file to local Documents directory
+            let fileManager = FileManager.default
+            let documentsDir: URL
+            #if os(macOS)
+            documentsDir = fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
+            #elseif os(iOS)
+            documentsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+            #endif
+            
+            let destURL = documentsDir.appendingPathComponent(resourceName)
+            
+            do {
+                if fileManager.fileExists(atPath: destURL.path) {
+                    try fileManager.removeItem(at: destURL)
+                }
+                try fileManager.copyItem(at: tempURL, to: destURL)
+                
+                self.activeTransfer = FileTransferStatus(
+                    filename: resourceName,
+                    progress: 1.0,
+                    isReceiving: true,
+                    statusText: "Đã nhận thành công \(resourceName)!"
+                )
+                self.newlyReceivedBookURL = destURL
+                self.onBookReceived?(destURL)
+                
+                // Clear banner after 4s
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                self.activeTransfer = nil
+            } catch {
+                print("Failed to save received file: \(error)")
+            }
+        }
+    }
 }
 
 // MARK: - MCNearbyServiceAdvertiserDelegate
 extension LiveCompanionSyncManager: MCNearbyServiceAdvertiserDelegate {
     func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didReceiveInvitationFromPeer peerID: MCPeerID, withContext context: Data?, invitationHandler: @escaping (Bool, MCSession?) -> Void) {
-        // Auto-accept invitation from trusted peer on same network
         invitationHandler(true, self.session)
     }
 }
@@ -234,7 +441,6 @@ extension LiveCompanionSyncManager: MCNearbyServiceAdvertiserDelegate {
 // MARK: - MCNearbyServiceBrowserDelegate
 extension LiveCompanionSyncManager: MCNearbyServiceBrowserDelegate {
     func browser(_ browser: MCNearbyServiceBrowser, foundPeer peerID: MCPeerID, withDiscoveryInfo info: [String : String]?) {
-        // Auto-invite discovered peer
         browser.invitePeer(peerID, to: self.session, withContext: nil, timeout: 10)
     }
     
