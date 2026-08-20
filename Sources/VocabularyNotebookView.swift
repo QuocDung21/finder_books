@@ -166,6 +166,8 @@ struct VocabularyNotebookView: View {
                 .listStyle(.inset)
             }
         }
+        #if os(macOS)
         .frame(minWidth: 540, minHeight: 460)
+        #endif
     }
 }

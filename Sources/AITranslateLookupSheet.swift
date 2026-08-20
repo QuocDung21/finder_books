@@ -84,6 +84,8 @@ struct AITranslateLookupSheet: View {
             .padding(.vertical, 12)
             .background(Color.platformControlBackground)
         }
+        #if os(macOS)
         .frame(minWidth: 580, idealWidth: 640, minHeight: 520, idealHeight: 600)
+        #endif
     }
 }

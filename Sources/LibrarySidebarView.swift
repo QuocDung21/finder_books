@@ -137,7 +137,9 @@ struct LibrarySidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        #if os(macOS)
         .frame(minWidth: 210, idealWidth: 230, maxWidth: 280)
+        #endif
         .sheet(isPresented: $showWiFiSyncSheet) {
             WiFiSyncControlSheet()
         }

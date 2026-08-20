@@ -160,6 +160,8 @@ struct WiFiSyncControlSheet: View {
                 }
             }
         }
+        #if os(macOS)
         .frame(minWidth: 420, minHeight: 460)
+        #endif
     }
 }

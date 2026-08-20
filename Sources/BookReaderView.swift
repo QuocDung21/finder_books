@@ -166,15 +166,17 @@ struct BookReaderView: View {
 
     // MARK: - Responsive Reader Toolbar
     private var readerToolbar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             // Left Group: Back Button & Title
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button {
                     onClose()
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 3) {
                         Image(systemName: "chevron.left")
+                        #if os(macOS)
                         Text("Thư Viện")
+                        #endif
                     }
                 }
                 .buttonStyle(.bordered)
@@ -185,37 +187,8 @@ struct BookReaderView: View {
                     .font(.system(size: 12, weight: .bold))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .frame(maxWidth: 160, alignment: .leading)
+                    .frame(maxWidth: 140, alignment: .leading)
             }
-
-            // Wi-Fi Live Sync Status Pill (P2P Mac ↔ iPad & IP Direct)
-            Button {
-                showWiFiSyncSheet = true
-            } label: {
-                HStack(spacing: 4) {
-                    let isConnected = syncManager.isDirectTCPConnected || !syncManager.connectedPeers.isEmpty
-                    Circle()
-                        .fill(isConnected ? Color.green : Color.orange)
-                        .frame(width: 6, height: 6)
-                    
-                    if let peer = syncManager.connectedPeers.first {
-                        Text("\(peer.displayName)")
-                            .font(.system(size: 10, weight: .semibold))
-                    } else if syncManager.isDirectTCPConnected {
-                        Text("Wi-Fi Direct")
-                            .font(.system(size: 10, weight: .semibold))
-                    } else {
-                        Text("Wi-Fi Sync")
-                            .font(.system(size: 10))
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.platformControlBackground)
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .help("Quản lý đồng bộ Wi-Fi & IP Direct giữa Mac và iPad")
 
             Spacer()
 
@@ -233,9 +206,9 @@ struct BookReaderView: View {
                 .keyboardShortcut(.leftArrow, modifiers: [])
                 .buttonStyle(.plain)
 
-                Text("\(currentPageIndex + 1) / \(totalPages)")
+                Text("\(currentPageIndex + 1)/\(totalPages)")
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .frame(minWidth: 60)
+                    .frame(minWidth: 46)
 
                 Button {
                     if currentPageIndex < totalPages - 1 {
@@ -249,8 +222,8 @@ struct BookReaderView: View {
                 .keyboardShortcut(.rightArrow, modifiers: [])
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
             .background(Color.platformControlBackground)
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
 
@@ -258,6 +231,34 @@ struct BookReaderView: View {
 
             // Right Group: Controls
             HStack(spacing: 6) {
+                // Wi-Fi Live Sync Pill
+                Button {
+                    showWiFiSyncSheet = true
+                } label: {
+                    HStack(spacing: 4) {
+                        let isConnected = syncManager.isDirectTCPConnected || !syncManager.connectedPeers.isEmpty
+                        Circle()
+                            .fill(isConnected ? Color.green : Color.orange)
+                            .frame(width: 6, height: 6)
+                        Image(systemName: "wifi")
+                            .font(.system(size: 10))
+                        #if os(macOS)
+                        if let peer = syncManager.connectedPeers.first {
+                            Text("\(peer.displayName)")
+                                .font(.system(size: 10, weight: .semibold))
+                        } else if syncManager.isDirectTCPConnected {
+                            Text("Wi-Fi Direct")
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        #endif
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(Color.platformControlBackground)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+
                 // Live Pen Mode Toggle Button
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {
@@ -266,17 +267,19 @@ struct BookReaderView: View {
                 } label: {
                     HStack(spacing: 3) {
                         Image(systemName: isPenModeActive ? "pencil.tip.crop.circle.badge.plus" : "pencil.tip")
+                        #if os(macOS)
                         if isPenModeActive {
                             Text("Bút Vẽ")
                                 .font(.system(size: 11, weight: .semibold))
                         }
+                        #endif
                     }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(isPenModeActive ? Color.orange : Color.secondary.opacity(0.18))
                 .foregroundColor(isPenModeActive ? .white : .primary)
                 .controlSize(.small)
-                .help("Bật/Tắt chế độ vẽ Apple Pencil & ghi chú trực tiếp")
+                .help("Bật/Tắt chế độ vẽ Apple Pencil & ghi chú")
                 .keyboardShortcut("p", modifiers: .command)
 
                 // Pin / Dock AI Dictionary Side Panel
@@ -290,20 +293,55 @@ struct BookReaderView: View {
                 } label: {
                     HStack(spacing: 3) {
                         Image(systemName: isDictionaryPinned ? "sidebar.right" : "character.book.closed")
+                        #if os(macOS)
                         if isDictionaryPinned {
                             Text("Ghim Dịch")
                                 .font(.system(size: 11, weight: .semibold))
                         }
+                        #endif
                     }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(isDictionaryPinned ? Color.accentColor : Color.secondary.opacity(0.18))
                 .foregroundColor(isDictionaryPinned ? .white : .primary)
                 .controlSize(.small)
-                .help("Ghim cột Tra cứu & Dịch AI kế bên sách (⌘D)")
+                .help("Ghim cột Tra cứu & Dịch AI (⌘D)")
                 .keyboardShortcut("d", modifiers: .command)
-                
-                // Vocabulary Notebook
+
+                #if os(iOS)
+                // iOS Overflow Menu for secondary actions
+                Menu {
+                    if syncManager.isConnected {
+                        Button {
+                            syncManager.sendBookFile(url: bookURL)
+                        } label: {
+                            Label("Gửi Sang \(syncManager.connectedDeviceName)", systemImage: "paperplane")
+                        }
+                    }
+                    
+                    Button {
+                        showNotebookSheet = true
+                    } label: {
+                        Label("Sổ Tay Từ Vựng", systemImage: "bookmark")
+                    }
+                    
+                    Button {
+                        withAnimation {
+                            showThumbnailSidebar.toggle()
+                        }
+                    } label: {
+                        Label("Dải Ảnh Thu Nhỏ", systemImage: "sidebar.left")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 14))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                #endif
+
+                #if os(macOS)
+                // Vocabulary Notebook (macOS)
                 Button {
                     showNotebookSheet = true
                 } label: {
@@ -311,9 +349,8 @@ struct BookReaderView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .help("Mở Sổ Tay Từ Vựng")
                 
-                // Direct Send Book to Peer Button
+                // Send Book (macOS)
                 if syncManager.isConnected {
                     Button {
                         syncManager.sendBookFile(url: bookURL)
@@ -326,9 +363,8 @@ struct BookReaderView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .help("Gửi file PDF này sang \(syncManager.connectedDeviceName) (Wi-Fi/Dây)")
                 }
-                   #if os(macOS)
+
                 // Layout Mode
                 Picker("", selection: $displayMode) {
                     Image(systemName: "rectangle.portrait.and.arrow.forward").tag(PDFDisplayMode.singlePageContinuous)
@@ -338,7 +374,6 @@ struct BookReaderView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .controlSize(.small)
-                .help("Chế độ xem: Cuộn liên tục / Từng trang / Hai trang mở")
 
                 // Zoom
                 HStack(spacing: 2) {
@@ -366,7 +401,6 @@ struct BookReaderView: View {
                     }
                     .controlSize(.small)
                 }
-                #endif
 
                 // Toggle Thumbnails Drawer
                 Button {
@@ -380,7 +414,7 @@ struct BookReaderView: View {
                 .tint(showThumbnailSidebar ? Color.accentColor : Color.secondary.opacity(0.2))
                 .foregroundColor(showThumbnailSidebar ? .white : .primary)
                 .controlSize(.small)
-                .help("Ẩn/Hiện dải ảnh thu nhỏ")
+                #endif
 
                 #if os(macOS)
                 // Split Action

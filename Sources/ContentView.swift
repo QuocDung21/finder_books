@@ -57,7 +57,9 @@ struct ContentView: View {
                 }
             }
         }
+        #if os(macOS)
         .frame(minWidth: 860, minHeight: 600)
+        #endif
         .toolbar {
             if readingBookURL == nil {
                 // 1. Search Bar
@@ -198,7 +200,9 @@ struct ContentView: View {
                     libraryVM.refreshLibrary()
                 }
             )
+            #if os(macOS)
             .frame(minWidth: 860, minHeight: 650)
+            #endif
         }
         .sheet(isPresented: $showAISettingsModal) {
             AISettingsView()

@@ -105,7 +105,9 @@ struct AISettingsView: View {
             .padding(.vertical, 12)
             .background(Color.platformControlBackground)
         }
+        #if os(macOS)
         .frame(minWidth: 580, idealWidth: 620, minHeight: 480)
+        #endif
     }
     
     // MARK: - Provider Specific Configuration
